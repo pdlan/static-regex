@@ -370,6 +370,7 @@ struct dfa {
     static constexpr int q = q;
     typedef f_ f;
     typedef transition_ transition;
+    typedef typename int_set_range<type_list_size<transition_>::value>::type states;
     template <typename map_>
     inline static int find_state(char c) {
         if (map_::head::first::condition(c)) {
@@ -615,21 +616,215 @@ struct regex_to_nfa<r> {
     typedef typename regex_to_nfa_one<r::tag_type, r>::type type;
 };
 
+template <typename transition, int s1, int s2>
+struct is_nondisting {
+    typedef typename type_map_search_value<
+        typename transition::head,
+        int_wrapper<s1>
+    >::type k1;
+    typedef typename type_map_search_value<
+        typename transition::head,
+        int_wrapper<s2>
+    >::type k2;
+    static constexpr bool is_head_nondisting = is_type_list_equal<k1, k2>::value;
+    static constexpr bool value = is_head_nondisting && is_nondisting<
+        typename transition::rest,
+        s1, s2
+    >::value;
+};
+
+template <int s1, int s2>
+struct is_nondisting<type_list_nil, s1, s2> {
+    static constexpr bool value = true;
+};
+
+template <bool is_final, typename f, typename transition, int state, int i>
+struct duplicated_states_ {
+    static constexpr int states = type_list_size<transition>::value;
+    typedef typename select_type<
+        is_nondisting<
+            transition,
+            i,
+            state
+        >::value &&
+            (state != i) &&
+            (is_final ? int_set_has<f, i>::value : !int_set_has<f, i>::value),
+        typename int_set_insert<
+            typename duplicated_states_<
+                is_final, f, transition, state, i - 1
+            >::type,
+            i
+        >::type,
+        typename duplicated_states_<
+            is_final, f, transition, state, i - 1
+        >::type
+    >::type type;
+};
+
+template <bool is_final, typename f, typename transition, int state>
+struct duplicated_states_<is_final, f, transition, state, -1> {
+    typedef int_set_nil type;
+};
+
+template <typename f, typename transition, int state>
+struct duplicated_states {
+    typedef typename duplicated_states_<
+        int_set_has<f, state>::value,
+        f, transition, state, type_list_size<transition>::value - 1
+    >::type type;
+};
+
+template <typename old_states, int state, typename states>
+struct replace_states {
+    typedef typename select_type<
+        int_set_has<states, old_states::head>::value,
+        typename int_set_insert<
+            typename int_set_remove<
+                typename replace_states<old_states, state, typename states::rest>::type,
+                old_states::head
+            >::type,
+            state
+        >::type,
+        typename int_set_remove<
+            typename replace_states<old_states, state, typename states::rest>::type,
+            old_states::head
+        >::type
+    >::type type;
+};
+
+template <int state, typename states>
+struct replace_states<int_set_nil, state, states> {
+    typedef int_set_nil type;
+};
+
+template <typename old_states, int state>
+struct replace_states<old_states, state, int_set_nil> {
+    typedef old_states type;
+};
+
+template <int state>
+struct replace_states<int_set_nil, state, int_set_nil> {
+    typedef int_set_nil type;
+};
+
+template <typename map_, int state, typename states>
+struct replace_transition {
+    typedef type_list<
+        type_pair<
+            typename map_::head::first,
+            typename select_type<
+                int_set_has<states, map_::head::second::value>::value,
+                int_wrapper<state>,
+                int_wrapper<map_::head::second::value>
+            >::type
+        >,
+        typename replace_transition<typename map_::rest, state, states>::type
+    > type;
+};
+
+template <int state, typename states>
+struct replace_transition<type_list_nil, state, states> {
+    typedef type_list_nil type;
+};
+
+template <typename next_states, typename transition, int state, typename states, int i>
+struct merge_states_transition {
+    typedef typename select_type<
+        int_set_has<next_states, i>::value,
+        type_list<
+            typename replace_transition<typename transition::head, state, states>::type,
+            typename merge_states_transition<
+                next_states,
+                typename transition::rest,
+                state,
+                states,
+                i + 1
+            >::type
+        >,
+        typename merge_states_transition<
+            next_states,
+            typename transition::rest,
+            state,
+            states,
+            i + 1
+        >::type
+    >::type type;
+};
+
+template <typename next_states, int state, typename states, int i>
+struct merge_states_transition<next_states, type_list_nil, state, states, i> {
+    typedef type_list_nil type;
+};
+
+template <typename transition, int state, typename states>
+struct merge_states {
+    typedef typename int_set_diff<
+        states,
+        typename int_set_range<type_list_size<transition>::value>::type
+    >::type next_states;
+    typedef typename merge_states_transition<
+        next_states,
+        transition,
+        state,
+        states,
+        0
+    >::type next_transition;
+};
+
+template <bool has_next_, typename dfa_, int i>
+struct minimize_dfa_loop {
+    typedef typename duplicated_states<
+        typename dfa_::f,
+        typename dfa_::transition,
+        i
+    >::type duplicated;
+    static constexpr bool has_next = !std::is_same<duplicated, int_set_nil>::value;
+    typedef merge_states<
+        typename dfa_::transition,
+        i,
+        duplicated
+    > next_states_transition;
+    typedef typename next_states_transition::next_states next_states;
+    typedef typename next_states_transition::next_transition next_transition;
+    typedef typename replace_states<typename dfa_::f, i, duplicated>::type next_f;
+    typedef dfa<
+        int_set_search<next_states, dfa_::q>::value,
+        next_f,
+        next_transition
+    > next_dfa;
+    typedef typename minimize_dfa_loop<
+        has_next,
+        next_dfa,
+        i + 1
+    >::type type;
+};
+
+template <typename dfa_, int i>
+struct minimize_dfa_loop<false, dfa_, i> {
+    typedef dfa_ type;
+};
+
+template <typename dfa_>
+struct minimize_dfa {
+    typedef typename minimize_dfa_loop<true, dfa_, 0>::type type;
+};
+
 template <typename... args>
 class regex {
 private:
     typedef typename regex_to_nfa<args...>::type nfa_;
     typedef typename nfa_to_dfa<nfa_>::type dfa_;
+    typedef typename minimize_dfa<dfa_>::type dfa_minimal;
 public:
     static bool match(const std::string &str) {
-        int state = 0;
+        int state = dfa_minimal::q;
         for (char c : str) {
             if (state == -1) {
                 return false;
             }
-            state = dfa_::template next_state<typename dfa_::transition>(state, c);
+            state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, c);
         }
-        return dfa_::template is_final<typename dfa_::f>(state);
+        return dfa_minimal::template is_final<typename dfa_minimal::f>(state);
     }
 };
 }

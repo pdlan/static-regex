@@ -138,6 +138,33 @@ struct type_list_merge_if_not_exist {
     >::type type;
 };
 
+template <typename list_>
+struct type_list_size {
+    static constexpr int value = type_list_size<typename list_::rest>::value + 1;
+};
+
+template <>
+struct type_list_size<type_list_nil> {
+    static constexpr int value = 0;
+};
+
+template <typename l1, typename l2>
+struct is_type_list_equal_ {
+    static constexpr bool value = type_list_search<l1, typename l2::head>::value != -1 &&
+        is_type_list_equal_<l1, typename l2::rest>::value;
+};
+
+template <typename l1>
+struct is_type_list_equal_<l1, type_list_nil> {
+    static constexpr bool value = true;
+};
+
+template <typename l1, typename l2>
+struct is_type_list_equal {
+    static constexpr bool value = type_list_size<l1>::value == type_list_size<l2>::value &&
+        is_type_list_equal_<l1, l2>::value;
+};
+
 template <typename first_, typename second_>
 struct type_pair {
     typedef first_ first;
@@ -202,6 +229,23 @@ struct type_map_value_list<type_list_nil> {
 template <typename key>
 struct type_map_get<type_list_nil, key> {
     typedef void type;
+};
+
+template <typename map_, typename value_>
+struct type_map_search_value {
+    typedef typename select_type<
+        std::is_same<typename map_::head::second, value_>::value,
+        type_list<
+            typename map_::head::first,
+            typename type_map_search_value<typename map_::rest, value_>::type
+        >,
+        typename type_map_search_value<typename map_::rest, value_>::type
+    >::type type;
+};
+
+template <typename value_>
+struct type_map_search_value<type_list_nil, value_> {
+    typedef type_list_nil type;
 };
 
 template <int head_, typename rest_>
@@ -320,5 +364,52 @@ struct int_set_has {
 template <int v>
 struct int_set_has<int_set_nil, v> {
     static constexpr bool value = false;
+};
+
+template <typename set1, typename set2>
+struct int_set_diff {
+    typedef typename select_type<
+        int_set_has<set1, set2::head>::value,
+        typename int_set_diff<set1, typename set2::rest>::type,
+        typename int_set_insert<
+            typename int_set_diff<set1, typename set2::rest>::type,
+            set2::head
+        >::type
+    >::type type;
+};
+
+template <typename set1>
+struct int_set_diff<set1, int_set_nil> {
+    typedef int_set_nil type;
+};
+
+template <int n, int i>
+struct int_set_range_ {
+    typedef int_set<
+        n - i,
+        typename int_set_range_<n, i - 1>::type
+    > type;
+};
+
+template <int n>
+struct int_set_range_<n, 0> {
+    typedef int_set_nil type;
+};
+
+template <int n>
+struct int_set_range {
+    typedef typename int_set_range_<n, n>::type type;
+};
+
+template <typename set_, int n>
+struct int_set_search {
+    static constexpr int value = set_::head == n ? 0 :
+        (int_set_search<typename set_::rest, n>::value == -1 ?
+             -1 : int_set_search<typename set_::rest, n>::value + 1);
+};
+
+template <int n>
+struct int_set_search<int_set_nil, n> {
+    static constexpr int value = -1;
 };
 }

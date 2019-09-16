@@ -148,21 +148,47 @@ struct type_list_size<type_list_nil> {
     static constexpr int value = 0;
 };
 
-template <typename l1, typename l2>
-struct is_type_list_equal_ {
-    static constexpr bool value = type_list_search<l1, typename l2::head>::value != -1 &&
-        is_type_list_equal_<l1, typename l2::rest>::value;
+template <typename list_, typename t>
+struct type_list_count {
+    static constexpr int value = std::is_same<typename list_::head, t>::value ? 1 : 0 +
+        type_list_count<typename list_::rest, t>::value;
 };
 
-template <typename l1>
-struct is_type_list_equal_<l1, type_list_nil> {
+template <typename t>
+struct type_list_count<type_list_nil, t> {
+    static constexpr int value = 0;
+};
+
+template <bool is_same_size, typename l1, typename l2, int i>
+struct is_type_list_equal_;
+
+template <typename l1, typename l2, int i>
+struct is_type_list_equal_<true, l1, l2, i> {
+    static constexpr bool value = 
+        type_list_count<l1,
+            typename type_list_get<l2, i>::type
+        >::value == type_list_count<l2,
+            typename type_list_get<l2, i>::type
+        >::value &&
+        is_type_list_equal_<true, l1, l2, i - 1>::value;
+};
+
+template <typename l1, typename l2>
+struct is_type_list_equal_<true, l1, l2, -1> {
     static constexpr bool value = true;
+};
+
+template <typename l1, typename l2, int i>
+struct is_type_list_equal_<false, l1, l2, i> {
+    static constexpr bool value = false;
 };
 
 template <typename l1, typename l2>
 struct is_type_list_equal {
-    static constexpr bool value = type_list_size<l1>::value == type_list_size<l2>::value &&
-        is_type_list_equal_<l1, l2>::value;
+    static constexpr bool value = is_type_list_equal_<
+        type_list_size<l1>::value == type_list_size<l2>::value,
+        l1, l2, type_list_size<l2>::value - 1
+    >::value;
 };
 
 template <typename first_, typename second_>
@@ -411,5 +437,17 @@ struct int_set_search {
 template <int n>
 struct int_set_search<int_set_nil, n> {
     static constexpr int value = -1;
+};
+
+template <typename set_, int from, int to>
+struct int_set_replace {
+    typedef typename select_type<
+        int_set_has<set_, from>::value,
+        typename int_set_insert<
+            typename int_set_remove<set_, from>::type,
+            to
+        >::type,
+        set_
+    >::type type;
 };
 }

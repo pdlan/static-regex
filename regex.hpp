@@ -876,9 +876,7 @@ private:
     using nfa_ = regex_to_nfa<args...>;
     using dfa_ = nfa_to_dfa<nfa_>;
     using dfa_minimal = minimize_dfa<dfa_>;
-    //typename dfa_::nothing a;
 public:
-    static int regex_id_var;
     static bool match(const std::string &str) {
         int state = dfa_minimal::q;
         for (char c : str) {

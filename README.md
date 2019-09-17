@@ -10,7 +10,7 @@ Example:
     
     int main() {
         using namespace static_regex;
-        typedef regex<
+        usign decimal = regex<
             option<
                 select<
                     character<'+'>,
@@ -41,7 +41,7 @@ Example:
                     closure<digit>
                 >
             >
-        > decimal;
+        >;
         cout << decimal::match("abc") << endl; // 0
         cout << decimal::match("1.") << endl; // 1
         cout << decimal::match("-1.1") << endl; // 1

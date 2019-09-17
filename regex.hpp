@@ -28,349 +28,396 @@ struct range_condition {
 
 struct epsilon {};
 
-typedef nfa<0, 1,
-   typename type_list_new<
-       typename type_list_new<
-           type_pair<epsilon, int_set_new<1>::type>
-       >::type
-   >::type
- > empty_nfa;
+using empty_nfa = nfa<0, 1,
+   type_list_new<
+       type_list_new<
+           type_pair<epsilon, int_set_new<1>>
+       >
+   >
+ >;
 
 template <typename transition, int n>
-struct transition_item_add {
-    typedef type_list<
+struct transition_item_add_impl {
+    using type = type_list<
         type_pair<typename transition::head::first,
-            typename int_set_add<typename transition::head::second, n>::type
+            int_set_add<typename transition::head::second, n>
         >,
-        typename transition_item_add<typename transition::rest, n>::type
-    > type;
+        typename transition_item_add_impl<typename transition::rest, n>::type
+    >;
 };
 
 template <int n>
-struct transition_item_add<type_list_nil, n> {
-    typedef type_list_nil type;
+struct transition_item_add_impl<type_list_nil, n> {
+    using type = type_list_nil;
 };
 
 template <typename transition, int n>
-struct transition_add {
-    typedef type_list<
-        typename transition_item_add<typename transition::head, n>::type,
-        typename transition_add<typename transition::rest, n>::type
-    > type;
+using transition_item_add = typename transition_item_add_impl<transition, n>::type;
+
+template <typename transition, int n>
+struct transition_add_impl {
+    using type = type_list<
+        transition_item_add<typename transition::head, n>,
+        typename transition_add_impl<typename transition::rest, n>::type
+    >;
 };
 
 template <int n>
-struct transition_add<type_list_nil, n> {
-    typedef type_list_nil type;
+struct transition_add_impl<type_list_nil, n> {
+    using type = type_list_nil;
 };
+
+template <typename transition, int n>
+using transition_add = typename transition_add_impl<transition, n>::type;
 
 template <typename condition>
-struct condition_nfa {
-    typedef nfa<0, 1,
-        typename type_list_new<
-            typename type_list_new<
-                type_pair<condition, int_set_new<1>::type>
-            >::type
-        >::type
-    > type;
-};
+using condition_nfa = nfa<0, 1,
+    type_list_new<
+        type_list_new<
+            type_pair<condition, int_set_new<1>>
+        >
+    >
+>;
 
 template <typename n1, typename n2>
-struct union_nfa {
+struct union_nfa_impl {
     static constexpr int q = 0;
     static constexpr int f = n1::states + n2::states + 1;
     static constexpr int n1_q = 1;
     static constexpr int n1_f = n1::f + 1;
     static constexpr int n2_q = n1::states + 1;
     static constexpr int n2_f = n1::states + n2::states;
-    typedef nfa<q, f,
-        typename type_list_merge<
-            typename type_list_new<
-                typename type_list_new<
-                    type_pair<epsilon, typename int_set_new<n1_q, n2_q>::type>
-                >::type
-            >::type,
-            typename transition_add<typename n1::transition, n1_q>::type,
-            typename type_list_new<
-                typename type_list_new<
-                    type_pair<epsilon, typename int_set_new<f>::type>
-                >::type
-            >::type,
-            typename transition_add<typename n2::transition, n2_q>::type,
-            typename type_list_new<
-                typename type_list_new<
-                    type_pair<epsilon, typename int_set_new<f>::type>
-                >::type
-            >::type
-        >::type
-    > type;
+    using type = nfa<q, f,
+        type_list_merge<
+            type_list_new<
+                type_list_new<
+                    type_pair<epsilon, int_set_new<n1_q, n2_q>>
+                >
+            >,
+            transition_add<typename n1::transition, n1_q>,
+            type_list_new<
+                type_list_new<
+                    type_pair<epsilon, int_set_new<f>>
+                >
+            >,
+            transition_add<typename n2::transition, n2_q>,
+            type_list_new<
+                type_list_new<
+                    type_pair<epsilon, int_set_new<f>>
+                >
+            >
+        >
+    >;
 };
 
 template <typename n1, typename n2>
-struct concat_nfa {
+using union_nfa = typename union_nfa_impl<n1, n2>::type;
+
+template <typename n1, typename n2>
+struct concat_nfa_impl {
     static constexpr int q = 0;
     static constexpr int f = n1::states + n2::states - 2;
     static constexpr int n1_q = 0;
     static constexpr int n2_q = n1::states - 1;
-    typedef nfa<q, f,
-        typename type_list_merge<
-            typename transition_add<typename n1::transition, n1_q>::type,
-            typename transition_add<typename n2::transition, n2_q>::type
-        >::type
-    > type;
+    using type = nfa<q, f,
+        type_list_merge<
+            transition_add<typename n1::transition, n1_q>,
+            transition_add<typename n2::transition, n2_q>
+        >
+    >;
 };
 
+template <typename n1, typename n2>
+using concat_nfa = typename concat_nfa_impl<n1, n2>::type;
+
 template <typename n>
-struct closure_nfa {
+struct closure_nfa_impl {
     static constexpr int q = 0;
     static constexpr int f = n::states + 1;
     static constexpr int n_q = 1;
     static constexpr int n_f = n::states;
-    typedef nfa<q, f,
-        typename type_list_merge<
-            typename type_list_new<
-                typename type_list_new<
-                    type_pair<epsilon, typename int_set_new<n_q, f>::type>
-                >::type
-            >::type,
-            typename transition_add<typename n::transition, n_q>::type,
-            typename type_list_new<
-                typename type_list_new<
-                    type_pair<epsilon, typename int_set_new<n_q, f>::type>
-                >::type
-            >::type
-        >::type
-    > type;
+    using type = nfa<q, f,
+        type_list_merge<
+            type_list_new<
+                type_list_new<
+                    type_pair<epsilon, int_set_new<n_q, f>>
+                >
+            >,
+            transition_add<typename n::transition, n_q>,
+            type_list_new<
+                type_list_new<
+                    type_pair<epsilon, int_set_new<n_q, f>>
+                >
+            >
+        >
+    >;
 };
 
+template <typename n>
+using closure_nfa = typename closure_nfa_impl<n>::type;
+
 template <typename transition, typename set_>
-struct epsilon_closure_set {
-    typedef typename type_map_get<
-        typename type_list_get<transition, set_::head>::type,
+struct epsilon_closure_set_impl {
+    using head_closure = type_map_get<
+        type_list_get<transition, set_::head>,
         epsilon
-    >::type head_closure;
-    typedef typename int_set_union<
+    >;
+    using type = int_set_union<
         set_,
         head_closure,
-        typename epsilon_closure_set<
+        typename epsilon_closure_set_impl<
             transition,
             head_closure
         >::type,
-        typename epsilon_closure_set<transition, typename set_::rest>::type
-    >::type type;
+        typename epsilon_closure_set_impl<transition, typename set_::rest>::type
+    >;
 };
 
 template <typename transition>
-struct epsilon_closure_set<transition, int_set_nil> {
-    typedef int_set_nil type;
+struct epsilon_closure_set_impl<transition, int_set_nil> {
+    using type = int_set_nil;
 };
+
+template <typename transition, typename set_>
+using epsilon_closure_set = typename epsilon_closure_set_impl<transition, set_>::type;
 
 template <typename transition, int n>
-struct epsilon_closure {
-    typedef typename epsilon_closure_set<
-        transition,
-        typename int_set_new<n>::type
-    >::type type;
-};
+using epsilon_closure = epsilon_closure_set<
+    transition,
+    int_set_new<n>
+>;
 
 template <typename transition, typename state, typename condition>
-struct next_dfa_state {
-    typedef typename int_set_union<
-        typename next_dfa_state<transition, typename state::rest, condition>::type,
-        typename epsilon_closure_set<
+struct next_dfa_state_impl {
+    using type = int_set_union<
+        typename next_dfa_state_impl<transition, typename state::rest, condition>::type,
+        epsilon_closure_set<
             transition,
-            typename type_map_get<
-                typename type_list_get<transition, state::head>::type,
+            type_map_get<
+                type_list_get<transition, state::head>,
                 condition
-            >::type
-        >::type
-    >::type type;
+            >
+        >
+    >;
 };
 
 template <typename transition, typename condition>
-struct next_dfa_state<transition, int_set_nil, condition> {
-    typedef int_set_nil type;
+struct next_dfa_state_impl<transition, int_set_nil, condition> {
+    using type = int_set_nil;
 };
 
+template <typename transition, typename state, typename condition>
+using next_dfa_state = typename next_dfa_state_impl<transition, state, condition>::type;
+
 template <typename transition, typename state>
-struct dfa_state_conditions {
-    typedef typename type_list_merge_if_not_exist<
-        typename type_list_diff<
+struct dfa_state_conditions_impl {
+    using type = type_list_merge_if_not_exist<
+        type_list_diff<
             type_list<
                 epsilon,
                 type_list_nil
             >,
-            typename type_map_key_list<
-                typename type_list_get<transition, state::head>::type
-            >::type
-        >::type,
-        typename dfa_state_conditions<transition, typename state::rest>::type
-    >::type type;
+            type_map_key_list<
+                type_list_get<transition, state::head>
+            >
+        >,
+        typename dfa_state_conditions_impl<transition, typename state::rest>::type
+    >;
 };
 
 template <typename transition>
-struct dfa_state_conditions<transition, int_set_nil> {
-    typedef type_list_nil type;
-};
-
-template <typename transition, typename state, typename condition>
-struct dfa_condition_map {
-    typedef type_list<
-        type_pair<typename condition::head,
-            typename next_dfa_state<transition, state, typename condition::head>::type
-        >,
-        typename dfa_condition_map<transition, state, typename condition::rest>::type
-    > type;
+struct dfa_state_conditions_impl<transition, int_set_nil> {
+    using type = type_list_nil;
 };
 
 template <typename transition, typename state>
-struct dfa_condition_map<transition, state, type_list_nil> {
-    typedef type_list_nil type;
+using dfa_state_conditions = typename dfa_state_conditions_impl<transition, state>::type;
+
+template <typename transition, typename state, typename condition>
+struct dfa_condition_map_impl {
+    using type = type_list<
+        type_pair<typename condition::head,
+            next_dfa_state<transition, state, typename condition::head>
+        >,
+        typename dfa_condition_map_impl<transition, state, typename condition::rest>::type
+    >;
+};
+
+template <typename transition, typename state>
+struct dfa_condition_map_impl<transition, state, type_list_nil> {
+    using type = type_list_nil;
+};
+
+template <typename transition, typename state, typename condition>
+using dfa_condition_map = typename dfa_condition_map_impl<transition, state, condition>::type;
+
+template <typename transition, typename states>
+struct dfa_transition_impl {
+    using type = type_list<
+        type_pair<
+            typename states::head,
+            dfa_condition_map<
+                transition, typename states::head,
+                dfa_state_conditions<transition, typename states::head>
+            >
+        >,
+        typename dfa_transition_impl<transition, typename states::rest>::type
+    >;
+};
+
+template <typename transition>
+struct dfa_transition_impl<transition, type_list_nil> {
+    using type = type_list_nil;
 };
 
 template <typename transition, typename states>
-struct dfa_transition {
-    typedef type_list<
-        type_pair<
-            typename states::head,
-            typename dfa_condition_map<
-                transition, typename states::head,
-                typename dfa_state_conditions<transition, typename states::head>::type
-            >::type
-        >,
-        typename dfa_transition<transition, typename states::rest>::type
-    > type;
-};
+using dfa_transition = typename dfa_transition_impl<transition, states>::type;
 
 template <typename transition>
-struct dfa_transition<transition, type_list_nil> {
-    typedef type_list_nil type;
-};
-
-template <typename transition>
-struct dfa_new_states {
-    typedef typename type_list_merge<
-        typename type_map_value_list<typename transition::head::second>::type,
-        typename dfa_new_states<typename transition::rest>::type
-    >::type type;
+struct dfa_new_states_impl {
+    using type = type_list_merge<
+        type_map_value_list<typename transition::head::second>,
+        typename dfa_new_states_impl<typename transition::rest>::type
+    >;
 };
 
 template<>
-struct dfa_new_states<type_list_nil> {
-    typedef type_list_nil type;
+struct dfa_new_states_impl<type_list_nil> {
+    using type = type_list_nil;
 };
 
+template <typename transition>
+using dfa_new_states = typename dfa_new_states_impl<transition>::type;
+
 template <typename m1, typename m2>
-struct condition_map_merge {
-    typedef typename condition_map_merge<m1, typename m2::rest>::type rest;
-    typedef typename type_map_get<m1, typename m2::head::first>::type v1;
-    typedef typename int_set_union<v1, typename m2::head::second>::type v;
-    typedef typename type_map_set<rest, typename m2::head::first, v>::type type;
+struct condition_map_merge_impl {
+    using rest = typename condition_map_merge_impl<m1, typename m2::rest>::type;
+    using v1 =  type_map_get<m1, typename m2::head::first>;
+    using v =  int_set_union<v1, typename m2::head::second>;
+    using type = type_map_set<rest, typename m2::head::first, v>;
 };
 
 template <typename m1>
-struct condition_map_merge<m1, type_list_nil> {
-    typedef m1 type;
+struct condition_map_merge_impl<m1, type_list_nil> {
+    using type = m1;
 };
 
+template <typename m1, typename m2>
+using condition_map_merge = typename condition_map_merge_impl<m1, m2>::type;
+
 template <typename t1, typename t2>
-struct merge_dfa_transition {
-    typedef typename merge_dfa_transition<t1, typename t2::rest>::type rest;
-    typedef typename type_map_get<t1, typename t2::head::first>::type m;
-    typedef typename condition_map_merge<m, typename t2::head::second>::type merged;
-    typedef typename type_map_set<
+struct merge_dfa_transition_impl {
+    using rest = typename merge_dfa_transition_impl<t1, typename t2::rest>::type;
+    using m = type_map_get<t1, typename t2::head::first>;
+    using merged = condition_map_merge<m, typename t2::head::second>;
+    using type = type_map_set<
         rest,
         typename t2::head::first,
         merged
-    >::type type;
+    >;
 };
 
 template <typename t>
-struct merge_dfa_transition<t, type_list_nil> {
-    typedef t type;
+struct merge_dfa_transition_impl<t, type_list_nil> {
+    using type = t;
 };
+
+template <typename t1, typename t2>
+using merge_dfa_transition = typename merge_dfa_transition_impl<t1, t2>::type;
 
 template <typename states_, typename transition_>
 struct nfa_to_dfa_loop_result {
-    typedef states_ states;
-    typedef transition_ transition;
+    using states = states_;
+    using transition = transition_;
 };
 
 template <bool has_next_, typename nfa, typename states, typename transition>
-struct nfa_to_dfa_loop {
-    typedef typename dfa_transition<typename nfa::transition, states>::type new_transition;
-    typedef typename dfa_new_states<new_transition>::type new_states;
-    typedef typename type_list_merge_if_not_exist<states, new_states>::type next_states;
-    typedef typename merge_dfa_transition<transition, new_transition>::type next_transition;
+struct nfa_to_dfa_loop_impl {
+    using new_transition = dfa_transition<typename nfa::transition, states>;
+    using new_states = dfa_new_states<new_transition>;
+    using next_states = type_list_merge_if_not_exist<states, new_states>;
+    using next_transition = merge_dfa_transition<transition, new_transition>;
     static constexpr bool has_next = !std::is_same<states, next_states>::value;
-    typedef typename nfa_to_dfa_loop<
+    using type = typename nfa_to_dfa_loop_impl<
         has_next,
         nfa,
         next_states,
         next_transition
-    >::type type;
+    >::type;
 };
 
 template <typename nfa, typename states, typename transition>
-struct nfa_to_dfa_loop<false, nfa, states, transition> {
-    typedef nfa_to_dfa_loop_result<states, transition> type;
+struct nfa_to_dfa_loop_impl<false, nfa, states, transition> {
+    using type = nfa_to_dfa_loop_result<states, transition>;
 };
 
+template <typename nfa, typename states, typename transition>
+using nfa_to_dfa_loop = typename nfa_to_dfa_loop_impl<true, nfa, states, transition>::type;
+
 template <typename all_states, typename map_>
-struct condition_map_int {
-    typedef type_list<
+struct condition_map_int_impl {
+    using type = type_list<
         type_pair<
             typename map_::head::first,
             int_wrapper<type_list_search<all_states, typename map_::head::second>::value>
         >,
-        typename condition_map_int<all_states, typename map_::rest>::type
-    > type;
+        typename condition_map_int_impl<all_states, typename map_::rest>::type
+    >;
 };
 
 template <typename all_states>
-struct condition_map_int<all_states, type_list_nil> {
-    typedef type_list_nil type;
+struct condition_map_int_impl<all_states, type_list_nil> {
+    using type = type_list_nil;
 };
 
+template <typename all_states, typename map_>
+using condition_map_int = typename condition_map_int_impl<all_states, map_>::type;
+
 template <typename all_states, typename states, typename transition>
-struct dfa_transition_int {
-    typedef type_list<
-        typename condition_map_int<
+struct dfa_transition_int_impl {
+    using type = type_list<
+        condition_map_int<
             all_states,
-            typename type_map_get<transition, typename states::head>::type
-        >::type,
-        typename dfa_transition_int<all_states, typename states::rest, transition>::type
-    > type;
+            type_map_get<transition, typename states::head>
+        >,
+        typename dfa_transition_int_impl<all_states, typename states::rest, transition>::type
+    >;
 };
 
 template <typename all_states, typename transition>
-struct dfa_transition_int<all_states, type_list_nil, transition> {
-    typedef type_list_nil type;
+struct dfa_transition_int_impl<all_states, type_list_nil, transition> {
+    using type = type_list_nil;
 };
 
+template <typename all_states, typename states, typename transition>
+using dfa_transition_int = typename dfa_transition_int_impl<all_states, states, transition>::type;
+
 template <typename all_states, typename states, int f>
-struct dfa_final_states {
-    typedef typename select_type<
+struct dfa_final_states_impl {
+    using type = select_type<
         int_set_has<typename states::head, f>::value,
-        typename int_set_insert<
-            typename dfa_final_states<all_states, typename states::rest, f>::type,
+        int_set_insert<
+            typename dfa_final_states_impl<all_states, typename states::rest, f>::type,
             type_list_search<all_states, typename states::head>::value
-        >::type,
-        typename dfa_final_states<all_states, typename states::rest, f>::type
-    >::type type;
+        >,
+        typename dfa_final_states_impl<all_states, typename states::rest, f>::type
+    >;
 };
 
 template <typename all_states, int f>
-struct dfa_final_states<all_states, type_list_nil, f> {
-    typedef int_set_nil type;
+struct dfa_final_states_impl<all_states, type_list_nil, f> {
+    using type = int_set_nil;
 };
+
+template <typename all_states, typename states, int f>
+using dfa_final_states = typename dfa_final_states_impl<all_states, states, f>::type;
 
 template <int q_, typename f_, typename transition_>
 struct dfa {
     static constexpr int q = q;
-    typedef f_ f;
-    typedef transition_ transition;
-    typedef typename int_set_range<type_list_size<transition_>::value>::type states;
+    using f = f_;
+    using transition = transition_;
+    using states = int_set_range<type_list_size<transition_>::value>;
     template <typename map_>
     inline static int find_state(char c) {
         if (map_::head::first::condition(c)) {
@@ -407,27 +454,29 @@ struct dfa {
 };
 
 template <typename nfa_>
-struct nfa_to_dfa {
-    typedef typename nfa_to_dfa_loop<
-        true,
+struct nfa_to_dfa_impl {
+    using result = nfa_to_dfa_loop<
         nfa_,
-        typename type_list_new<
-            typename epsilon_closure<typename nfa_::transition, nfa_::q>::type
-        >::type,
+        type_list_new<
+            epsilon_closure<typename nfa_::transition, nfa_::q>
+        >,
         type_list_nil
-    >::type result;
-    typedef typename dfa_transition_int<
+    >;
+    using transition = dfa_transition_int<
         typename result::states,
         typename result::states,
         typename result::transition
-    >::type transition;
-    typedef typename dfa_final_states<
+    >;
+    using final_states = dfa_final_states<
         typename result::states,
         typename result::states,
         nfa_::f
-    >::type final_states;
-    typedef dfa<0, final_states, transition> type;
+    >;
+    using type = dfa<0, final_states, transition>;
 };
+
+template <typename nfa_>
+using nfa_to_dfa = typename nfa_to_dfa_impl<nfa_>::type;
 
 template <char c>
 struct character {
@@ -442,27 +491,27 @@ template <char c>
 struct static_string<c> {
     static constexpr int tag_type = 2;
     static constexpr char head = c;
-    typedef void rest;
+    using rest = void;
 };
 
 template <char head_, char... rest_>
 struct static_string<head_, rest_...> {
     static constexpr int tag_type = 1;
     static constexpr char head = head_;
-    typedef static_string<rest_...> rest;
+    using rest = static_string<rest_...>;
 };
 
 template <typename r>
 struct option {
     static constexpr int tag_type = 3;
-    typedef r type;
+    using type = r;
 };
 
 template <typename r, int times>
 struct repeat {
     static constexpr int tag_type = 4;
-    typedef r head;
-    typedef repeat<r, times - 1> rest;
+    using head = r;
+    using rest = repeat<r, times - 1>;
 };
 
 template <typename r>
@@ -473,14 +522,14 @@ struct repeat<r, 0> {
 template <typename r1_, typename r2_>
 struct select {
     static constexpr int tag_type = 6;
-    typedef r1_ r1;
-    typedef r2_ r2;
+    using r1 = r1_;
+    using r2 =r2_;
 };
 
 template <typename r>
 struct closure {
     static constexpr int tag_type = 7;
-    typedef r type;
+    using type = r;
 };
 
 template <char c1_, char c2_>
@@ -496,14 +545,14 @@ struct concat;
 template <typename head_, typename... rest_>
 struct concat<head_, rest_...> {
     static constexpr int tag_type = 9;
-    typedef head_ head;
-    typedef concat<rest_...> rest;
+    using head = head_;
+    using rest = concat<rest_...>;
 };
 
 template <typename r>
 struct concat<r> {
     static constexpr int tag_type = 10;
-    typedef r head;
+    using head = r;
 };
 
 typedef range<'0', '9'> digit;
@@ -512,53 +561,61 @@ typedef range<'A', 'B'> letter_upper_case;
 typedef select<range<'a', 'b'>, range<'A', 'B'>> letter;
 
 template <typename... args>
-struct regex_to_nfa;
+struct regex_to_nfa_impl;
 
 template <typename head, typename... rest>
-struct regex_to_nfa<head, rest...> {
-    typedef typename concat_nfa<
-        typename regex_to_nfa<head>::type,
-        typename regex_to_nfa<rest...>::type
-    >::type type;
+struct regex_to_nfa_impl<head, rest...> {
+    using type = typename concat_nfa<
+        typename regex_to_nfa_impl<head>::type,
+        typename regex_to_nfa_impl<rest...>::type
+    >::type;
 };
 
 template <int tag_type, typename r>
 struct regex_to_nfa_one;
 
 template <typename r>
+struct regex_to_nfa_impl<r> {
+    using type = typename regex_to_nfa_one<r::tag_type, r>::type;
+};
+
+template <typename... args>
+using regex_to_nfa = typename regex_to_nfa_impl<args...>::type;
+
+template <typename r>
 struct regex_to_nfa_one<0, r> {
-    typedef typename condition_nfa<symbol_condition<r::value>>::type type;
+    using type = condition_nfa<symbol_condition<r::value>>;
 };
 
 template <typename r>
 struct regex_to_nfa_one<1, r> {
-    typedef typename concat_nfa<
-        typename condition_nfa<symbol_condition<r::head>>::type,
+    using type = typename concat_nfa<
+        condition_nfa<symbol_condition<r::head>>,
         typename regex_to_nfa_one<
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type type;
+    >::type;
 };
 
 template <typename r>
 struct regex_to_nfa_one<2, r> {
-    typedef typename condition_nfa<symbol_condition<r::head>>::type type;
+    using type = condition_nfa<symbol_condition<r::head>>;
 };
 
 template <typename r>
 struct regex_to_nfa_one<3, r> {
-    typedef typename union_nfa<empty_nfa,
+    using type = union_nfa<empty_nfa,
         typename regex_to_nfa_one<
             r::type::tag_type,
             typename r::type
         >::type
-    >::type type;
+    >;
 };
 
 template <typename r>
 struct regex_to_nfa_one<4, r> {
-    typedef typename concat_nfa<
+    using type = typename concat_nfa<
         typename regex_to_nfa_one<
             r::head::tag_type,
             typename r::head
@@ -567,67 +624,62 @@ struct regex_to_nfa_one<4, r> {
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type type;
+    >::type;
 };
 
 template <typename r>
 struct regex_to_nfa_one<5, r> {
-    typedef empty_nfa type;
+    using type = empty_nfa;
 };
 
 template <typename r>
 struct regex_to_nfa_one<6, r> {
-    typedef typename union_nfa<
+    using type = union_nfa<
         typename regex_to_nfa_one<r::r1::tag_type, typename r::r1>::type,
         typename regex_to_nfa_one<r::r2::tag_type, typename r::r2>::type
-    >::type type;
+    >;
 };
 
 template <typename r>
 struct regex_to_nfa_one<7, r> {
-    typedef typename closure_nfa<
+    using type = closure_nfa<
         typename regex_to_nfa_one<r::type::tag_type, typename r::type>::type
-    >::type type;
+    >;
 };
 
 template <typename r>
 struct regex_to_nfa_one<8, r> {
-    typedef typename condition_nfa<range_condition<r::c1, r::c2>>::type type;
+    using type = condition_nfa<range_condition<r::c1, r::c2>>;
 };
 
 template <typename r>
 struct regex_to_nfa_one<9, r> {
-    typedef typename concat_nfa<
+    using type = typename concat_nfa<
         typename regex_to_nfa_one<r::head::tag_type, typename r::head>::type,
         typename regex_to_nfa_one<
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type type;
+    >::type;
 };
 
 template <typename r>
 struct regex_to_nfa_one<10, r> {
-    typedef typename regex_to_nfa_one<r::head::tag_type, typename r::head>::type type;
-};
-
-template <typename r>
-struct regex_to_nfa<r> {
-    typedef typename regex_to_nfa_one<r::tag_type, r>::type type;
+    using type = typename regex_to_nfa_one<r::head::tag_type, typename r::head>::type;
 };
 
 template <typename transition, int s1, int s2>
 struct is_nondisting {
     static constexpr bool value = is_type_list_equal<
-        typename type_list_get<transition, s1>::type,
-        typename type_list_get<transition, s2>::type
+        type_list_get<transition, s1>,
+        type_list_get<transition, s2>
     >::value;
 };
 
 template <bool is_final, typename f, typename transition, int state, int i>
-struct duplicated_states_ {
+struct duplicated_states_impl {
     static constexpr int states = type_list_size<transition>::value;
-    typedef typename select_type<
+    using type = select_type<
         is_nondisting<
             transition,
             i,
@@ -635,65 +687,69 @@ struct duplicated_states_ {
         >::value &&
             (state != i) &&
             (is_final ? int_set_has<f, i>::value : !int_set_has<f, i>::value),
-        typename int_set_insert<
-            typename duplicated_states_<
+        int_set_insert<
+            typename duplicated_states_impl<
                 is_final, f, transition, state, i - 1
             >::type,
             i
-        >::type,
-        typename duplicated_states_<
+        >,
+        typename duplicated_states_impl<
             is_final, f, transition, state, i - 1
         >::type
-    >::type type;
+    >;
 };
 
 template <bool is_final, typename f, typename transition, int state>
-struct duplicated_states_<is_final, f, transition, state, -1> {
-    typedef int_set_nil type;
+struct duplicated_states_impl<is_final, f, transition, state, -1> {
+    using type = int_set_nil;
 };
 
 template <typename f, typename transition, int state>
-struct duplicated_states {
-    typedef typename duplicated_states_<
-        int_set_has<f, state>::value,
-        f, transition, state, type_list_size<transition>::value - 1
-    >::type type;
-};
+using duplicated_states = typename duplicated_states_impl<
+    int_set_has<f, state>::value,
+    f, transition, state, type_list_size<transition>::value - 1
+>::type;
 
 template <typename old_states, int state, typename states>
-struct replace_states {
-    typedef typename replace_states<
-        typename int_set_replace<
+struct replace_states_impl {
+    using type = typename replace_states_impl<
+        int_set_replace<
             old_states,
             states::head,
             state
-        >::type,
+        >,
         state,
         typename states::rest
-    >::type type;
+    >::type;
 };
 
 template <typename old_states, int state>
-struct replace_states<old_states, state, int_set_nil> {
-    typedef old_states type;
+struct replace_states_impl<old_states, state, int_set_nil> {
+    using type = old_states;
 };
 
+template <typename old_states, int state, typename states>
+using replace_states = typename replace_states_impl<old_states, state, states>::type;
+
 template <typename next_states, typename states>
-struct to_new_states {
-    typedef typename int_set_insert<
-        typename to_new_states<next_states, typename states::rest>::type,
+struct to_new_states_impl {
+    using type = int_set_insert<
+        typename to_new_states_impl<next_states, typename states::rest>::type,
         int_set_search<next_states, states::head>::value
-    >::type type;
+    >;
 };
 
 template <typename next_states>
-struct to_new_states<next_states, int_set_nil> {
-    typedef int_set_nil type;
+struct to_new_states_impl<next_states, int_set_nil> {
+    using type = int_set_nil;
 };
 
+template <typename next_states, typename states>
+using to_new_states = typename to_new_states_impl<next_states, states>::type;
+
 template <typename next_states, typename map_, int state, typename states>
-struct replace_transition {
-    typedef type_list<
+struct replace_transition_impl {
+    using type = type_list<
         type_pair<
             typename map_::head::first,
             int_wrapper<
@@ -708,24 +764,27 @@ struct replace_transition {
                 >::value
             >
         >,
-        typename replace_transition<next_states, typename map_::rest, state, states>::type
-    > type;
+        typename replace_transition_impl<next_states, typename map_::rest, state, states>::type
+    >;
 };
 
 template <typename next_states, int state, typename states>
-struct replace_transition<next_states, type_list_nil, state, states> {
-    typedef type_list_nil type;
+struct replace_transition_impl<next_states, type_list_nil, state, states> {
+    using type = type_list_nil;
 };
 
+template <typename next_states, typename map_, int state, typename states>
+using replace_transition = typename replace_transition_impl<next_states, map_, state, states>::type;
+
 template <typename next_states, typename transition, int state, typename states, int i>
-struct merge_states_transition {
-    typedef typename select_type<
+struct merge_states_transition_impl {
+    using type = select_type<
         int_set_has<next_states, i>::value,
         type_list<
-            typename replace_transition<
+            replace_transition<
                 next_states, typename transition::head, state, states
-            >::type,
-            typename merge_states_transition<
+            >,
+            typename merge_states_transition_impl<
                 next_states,
                 typename transition::rest,
                 state,
@@ -733,89 +792,90 @@ struct merge_states_transition {
                 i + 1
             >::type
         >,
-        typename merge_states_transition<
+        typename merge_states_transition_impl<
             next_states,
             typename transition::rest,
             state,
             states,
             i + 1
         >::type
-    >::type type;
+    >;
 };
 
 template <typename next_states, int state, typename states, int i>
-struct merge_states_transition<next_states, type_list_nil, state, states, i> {
-    typedef type_list_nil type;
+struct merge_states_transition_impl<next_states, type_list_nil, state, states, i> {
+    using type = type_list_nil;
 };
+
+template <typename next_states, typename transition, int state, typename states, int i>
+using merge_states_transition = typename merge_states_transition_impl<
+    next_states, transition, state, states, i
+>::type;
 
 template <typename transition, int state, typename states>
 struct merge_states {
-    typedef typename int_set_diff<
+    using next_states = int_set_diff<
         states,
-        typename int_set_range<type_list_size<transition>::value>::type
-    >::type next_states;
-    typedef typename merge_states_transition<
+        int_set_range<type_list_size<transition>::value>
+    >;
+    using next_transition = merge_states_transition<
         next_states,
         transition,
         state,
         states,
         0
-    >::type next_transition;
+    >;
 };
 
 template <bool has_next_, typename dfa_, int i>
 struct minimize_dfa_loop {
-    typedef typename duplicated_states<
+    using duplicated = duplicated_states<
         typename dfa_::f,
         typename dfa_::transition,
         i
-    >::type duplicated;
+    >;
     static constexpr bool has_duplicated = !std::is_same<duplicated, int_set_nil>::value;
     static constexpr bool has_next = has_duplicated ||
         (i < type_list_size<typename dfa_::transition>::value - 1);
     static constexpr bool move_state = !has_duplicated;
     static constexpr int next_i = move_state ? i + 1 : 0;
-    typedef merge_states<
+    using next_states_transition = merge_states<
         typename dfa_::transition,
         i,
         duplicated
-    > next_states_transition;
-    typedef typename next_states_transition::next_states next_states;
-    typedef typename next_states_transition::next_transition next_transition;
-    typedef typename to_new_states<
+    >;
+    using next_states = typename next_states_transition::next_states;
+    using next_transition = typename next_states_transition::next_transition;
+    using next_f = to_new_states<
         next_states,
-        typename replace_states<typename dfa_::f, i, duplicated>::type
-    >::type next_f;
-    //typename replace_states<typename dfa_::f, i, duplicated>::type::nothing a;
-    //typename replace_states<typename dfa_::f, i, duplicated>::nothing b;
-    typedef dfa<
+        replace_states<typename dfa_::f, i, duplicated>
+    >;
+    using next_dfa = dfa<
         int_set_search<next_states, dfa_::q>::value,
         next_f,
         next_transition
-    > next_dfa;
-    typedef typename minimize_dfa_loop<
+    >;
+    using type = typename minimize_dfa_loop<
         has_next,
         next_dfa,
         next_i
-    >::type type;
+    >::type;
 };
 
 template <typename dfa_, int i>
 struct minimize_dfa_loop<false, dfa_, i> {
-    typedef dfa_ type;
+    using type = dfa_;
 };
 
 template <typename dfa_>
-struct minimize_dfa {
-    typedef typename minimize_dfa_loop<true, dfa_, 0>::type type;
-};
+using minimize_dfa = typename minimize_dfa_loop<true, dfa_, 0>::type;
 
 template <typename... args>
 class regex {
 private:
-    typedef typename regex_to_nfa<args...>::type nfa_;
-    typedef typename nfa_to_dfa<nfa_>::type dfa_;
-    typedef typename minimize_dfa<dfa_>::type dfa_minimal;
+    using nfa_ = regex_to_nfa<args...>;
+    using dfa_ = nfa_to_dfa<nfa_>;
+    using dfa_minimal = minimize_dfa<dfa_>;
     //typename dfa_::nothing a;
 public:
     static int regex_id_var;

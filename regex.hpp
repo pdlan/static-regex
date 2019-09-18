@@ -12,16 +12,16 @@ struct nfa {
     typedef transition_ transition;
 };
 
-template <char c>
+template <int c>
 struct symbol_condition {
-    inline static bool condition(char input) {
+    inline static bool condition(int input) {
         return c == input;
     }
 };
 
-template <char c1, char c2>
+template <int c1, int c2>
 struct range_condition {
-    inline static bool condition(char input) {
+    inline static bool condition(int input) {
         return c1 <= input && c2 >= input;
     }
 };
@@ -419,7 +419,7 @@ struct dfa {
     using transition = transition_;
     using states = int_set_range<type_list_size<transition_>::value>;
     template <typename map_>
-    inline static int find_state(char c) {
+    inline static int find_state(int c) {
         if (map_::head::first::condition(c)) {
             return map_::head::second::value;
         } else {
@@ -427,11 +427,11 @@ struct dfa {
         }
     }
     template <>
-    inline static int find_state<type_list_nil>(char c) {
+    inline static int find_state<type_list_nil>(int c) {
         return -1;
     }
     template <typename transition_left>
-    inline static int next_state(int state, char c) {
+    inline static int next_state(int state, int c) {
         if (state == 0) {
             return find_state<typename transition_left::head>(c);
         } else {
@@ -439,7 +439,7 @@ struct dfa {
         }
     }
     template <>
-    inline static int next_state<type_list_nil>(int state, char c) {
+    inline static int next_state<type_list_nil>(int state, int c) {
         return -1;
     }
     template <typename f_left>
@@ -482,6 +482,16 @@ template <char c>
 struct character {
     static constexpr int tag_type = 0;
     static constexpr char value = c;
+};
+
+struct regex_begin {
+    static constexpr int tag_type = 0;
+    static constexpr int value = -1;
+};
+
+struct regex_end {
+    static constexpr int tag_type = 0;
+    static constexpr int value = -2;
 };
 
 template <char... args>
@@ -870,20 +880,53 @@ struct minimize_dfa_loop<false, dfa_, i> {
 template <typename dfa_>
 using minimize_dfa = typename minimize_dfa_loop<true, dfa_, 0>::type;
 
+template <typename transition>
+struct transition_has_begin_end {
+    static constexpr bool has_begin = !std::is_void<
+        type_map_get<typename transition::head, symbol_condition<-1>>
+    >::value || transition_has_begin_end<typename transition::rest>::has_begin;
+    static constexpr bool has_end = !std::is_void<
+        type_map_get<typename transition::head, symbol_condition<-2>>
+    >::value || transition_has_begin_end<typename transition::rest>::has_end;
+};
+
+template <>
+struct transition_has_begin_end<type_list_nil> {
+    static constexpr bool has_begin = false;
+    static constexpr bool has_end = false;
+};
+
+template <typename dfa_>
+struct dfa_has_begin_end {
+    static constexpr bool has_begin = transition_has_begin_end<
+        typename dfa_::transition
+    >::has_begin;
+    static constexpr bool has_end = transition_has_begin_end<
+        typename dfa_::transition
+    >::has_end;
+};
+
 template <typename... args>
 class regex {
 private:
     using nfa_ = regex_to_nfa<args...>;
     using dfa_ = nfa_to_dfa<nfa_>;
     using dfa_minimal = minimize_dfa<dfa_>;
+    using has_begin_end = dfa_has_begin_end<dfa_minimal>;
 public:
     static bool match(const std::string &str) {
         int state = dfa_minimal::q;
+        if (has_begin_end::has_begin) {
+            state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -1);
+        }
         for (char c : str) {
             if (state == -1) {
                 return false;
             }
             state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, c);
+        }
+        if (has_begin_end::has_end) {
+            state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -2);
         }
         return dfa_minimal::template is_final<typename dfa_minimal::f>(state);
     }

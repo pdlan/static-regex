@@ -565,10 +565,10 @@ struct regex_to_nfa_impl;
 
 template <typename head, typename... rest>
 struct regex_to_nfa_impl<head, rest...> {
-    using type = typename concat_nfa<
+    using type = concat_nfa<
         typename regex_to_nfa_impl<head>::type,
         typename regex_to_nfa_impl<rest...>::type
-    >::type;
+    >;
 };
 
 template <int tag_type, typename r>
@@ -589,13 +589,13 @@ struct regex_to_nfa_one<0, r> {
 
 template <typename r>
 struct regex_to_nfa_one<1, r> {
-    using type = typename concat_nfa<
+    using type = concat_nfa<
         condition_nfa<symbol_condition<r::head>>,
         typename regex_to_nfa_one<
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type;
+    >;
 };
 
 template <typename r>
@@ -615,7 +615,7 @@ struct regex_to_nfa_one<3, r> {
 
 template <typename r>
 struct regex_to_nfa_one<4, r> {
-    using type = typename concat_nfa<
+    using type = concat_nfa<
         typename regex_to_nfa_one<
             r::head::tag_type,
             typename r::head
@@ -624,7 +624,7 @@ struct regex_to_nfa_one<4, r> {
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type;
+    >;
 };
 
 template <typename r>
@@ -654,13 +654,13 @@ struct regex_to_nfa_one<8, r> {
 
 template <typename r>
 struct regex_to_nfa_one<9, r> {
-    using type = typename concat_nfa<
+    using type = concat_nfa<
         typename regex_to_nfa_one<r::head::tag_type, typename r::head>::type,
         typename regex_to_nfa_one<
             r::rest::tag_type,
             typename r::rest
         >::type
-    >::type;
+    >;
 };
 
 template <typename r>

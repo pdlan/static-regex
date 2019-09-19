@@ -1,5 +1,7 @@
 #pragma once
+#include <vector>
 #include <string>
+#include <utility>
 #include "util.hpp"
 
 namespace static_regex {
@@ -419,28 +421,28 @@ struct dfa {
     using transition = transition_;
     using states = int_set_range<type_list_size<transition_>::value>;
     template <typename map_>
-    inline static int find_state(int c) {
+    inline static int find_state(int c, int default_state = -1) {
         if (map_::head::first::condition(c)) {
             return map_::head::second::value;
         } else {
-            return find_state<typename map_::rest>(c);
+            return find_state<typename map_::rest>(c, default_state);
         }
     }
     template <>
-    inline static int find_state<type_list_nil>(int c) {
-        return -1;
+    inline static int find_state<type_list_nil>(int c, int default_state = -1) {
+        return default_state;
     }
     template <typename transition_left>
-    inline static int next_state(int state, int c) {
+    inline static int next_state(int state, int c, int default_state = -1) {
         if (state == 0) {
-            return find_state<typename transition_left::head>(c);
+            return find_state<typename transition_left::head>(c, default_state);
         } else {
-            return next_state<typename transition_left::rest>(state - 1, c);
+            return next_state<typename transition_left::rest>(state - 1, c, default_state);
         }
     }
     template <>
-    inline static int next_state<type_list_nil>(int state, int c) {
-        return -1;
+    inline static int next_state<type_list_nil>(int state, int c, int default_state = -1) {
+        return default_state;
     }
     template <typename f_left>
     inline static bool is_final(int state) {
@@ -529,11 +531,18 @@ struct repeat<r, 0> {
     static constexpr int tag_type = 5;
 };
 
-template <typename r1_, typename r2_>
+template <typename head, typename... rest>
 struct select {
     static constexpr int tag_type = 6;
+    using r1 = head;
+    using r2 = select<rest...>;
+};
+
+template <typename r1_, typename r2_>
+struct select<r1_, r2_> {
+    static constexpr int tag_type = 6;
     using r1 = r1_;
-    using r2 =r2_;
+    using r2 = r2_;
 };
 
 template <typename r>
@@ -566,9 +575,9 @@ struct concat<r> {
 };
 
 typedef range<'0', '9'> digit;
-typedef range<'a', 'b'> letter_lower_case;
-typedef range<'A', 'B'> letter_upper_case;
-typedef select<range<'a', 'b'>, range<'A', 'B'>> letter;
+typedef range<'a', 'z'> letter_lower_case;
+typedef range<'A', 'Z'> letter_upper_case;
+typedef select<range<'a', 'z'>, range<'A', 'Z'>> letter;
 
 template <typename... args>
 struct regex_to_nfa_impl;
@@ -929,6 +938,92 @@ public:
             state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -2);
         }
         return dfa_minimal::template is_final<typename dfa_minimal::f>(state);
+    }
+    static std::pair<size_t, size_t> find(const std::string &str, size_t from = 0, bool greedy = true) {
+        int start = dfa_minimal::q;
+        int state = dfa_minimal::q;
+        size_t begin;
+        bool has_accepted = false;
+        if (from == 0) {
+            begin = 0;
+        } else {
+            begin = from;
+            from += 1;
+        }
+        for (size_t i = from; i < str.length() + 2; ++i) {
+            if (i == 0) {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -1);
+            } else if (i == str.length() + 1) {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -2);
+            } else {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, str[i - 1]);
+            }
+            bool has_failed = false;
+            if (state == -1) {
+                state = start;
+                has_failed = true;
+            }
+            if (greedy) {
+                bool prev_has_accepted = has_accepted;
+                has_accepted = !has_failed && dfa_minimal::template is_final<typename dfa_minimal::f>(state) &&
+                    i != str.length() + 1;
+                if (prev_has_accepted && !has_accepted) {
+                    return std::make_pair(begin, i - begin - 1);
+                }
+            } else {
+                if (!has_failed && dfa_minimal::template is_final<typename dfa_minimal::f>(state)) {
+                    size_t end;
+                    if (i == str.length() + 1) {
+                        end = str.length();
+                    } else {
+                        end = i;
+                    }
+                    return std::make_pair(begin, end - begin);
+                }
+            }
+            if (has_failed) {
+                begin = i;
+            }
+        }
+        return std::make_pair(std::string::npos, 0);
+    }
+    static std::vector<std::pair<size_t, size_t>> find_all(const std::string &str, size_t from = 0) {
+        std::vector<std::pair<size_t, size_t>> res;
+        int start = dfa_minimal::q;
+        int state = dfa_minimal::q;
+        size_t begin;
+        bool has_accepted = false;
+        if (from == 0) {
+            begin = 0;
+        } else {
+            begin = from;
+            from += 1;
+        }
+        for (size_t i = from; i < str.length() + 2; ++i) {
+            if (i == 0) {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -1);
+            } else if (i == str.length() + 1) {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, -2);
+            } else {
+                state = dfa_minimal::template next_state<typename dfa_minimal::transition>(state, str[i - 1]);
+            }
+            bool has_failed = false;
+            if (state == -1) {
+                state = start;
+                has_failed = true;
+            }
+            bool prev_has_accepted = has_accepted;
+            has_accepted = !has_failed && dfa_minimal::template is_final<typename dfa_minimal::f>(state) &&
+                i != str.length() + 1;
+            if (prev_has_accepted && !has_accepted) {
+                res.emplace_back(begin, i - begin - 1);
+                begin = i;
+            }
+            if (has_failed) {
+                begin = i;
+            }
+        }
+        return res;
     }
 };
 }

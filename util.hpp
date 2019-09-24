@@ -1,504 +1,680 @@
 #pragma once
+#include <array>
 #include <type_traits>
 
-namespace static_regex {
-template <int n>
-struct int_wrapper {
-    static constexpr int value = n;
+using Nil = void;
+
+namespace TypeList {
+template <typename Head_, typename Rest_>
+struct New {
+    using Head = Head_;
+    using Rest = Rest_;
 };
 
-template <bool first, typename t1, typename t2>
-struct select_type_impl {
-    using type = t1;
+template <bool IsEnd, typename List, template <typename T> class Func>
+struct ApplyImpl {
+    using Type = TypeList::New<
+        Func<typename List::Head>,
+        typename ApplyImpl<
+            std::is_same<typename List::Rest, Nil>::value,
+            typename List::Rest,
+            Func
+        >::Type
+    >;
 };
 
-template <typename t1, typename t2>
-struct select_type_impl<false, t1, t2> {
-    using type = t2;
+template <typename List, template <typename T> class Func>
+struct ApplyImpl<true, List, Func> {
+    using Type = Nil;
 };
 
-template <bool first, typename t1, typename t2>
-using select_type = typename select_type_impl<first, t1, t2>::type;
+template <typename List, template <typename T> class Func>
+using Apply = typename ApplyImpl<
+    std::is_same<List, Nil>::value,
+    List,
+    Func
+>::Type;
 
-typedef void type_list_nil;
-
-template <typename head_, typename rest_>
-struct type_list {
-    using head = head_;
-    using rest = rest_;
+template <typename Head, typename... Rest>
+struct MergeImpl {
+    using Type = typename MergeImpl<Head, typename MergeImpl<Rest...>::Type>::Type;
 };
 
-template <typename... args>
-struct type_list_new_impl {};
-
-template <typename head, typename... rest>
-struct type_list_new_impl<head, rest...> {
-    using type = type_list<head, typename type_list_new_impl<rest...>::type>;
+template <typename List1, typename List2>
+struct MergeImpl<List1, List2> {
+    using Type = New<
+        typename List1::Head,
+        typename MergeImpl<typename List1::Rest, List2>::Type
+    >;
 };
 
-template <typename head>
-struct type_list_new_impl<head> {
-    using type = type_list<head, type_list_nil>;
+template <typename List2>
+struct MergeImpl<Nil, List2> {
+    using Type = List2;
+};
+
+template <typename... Args>
+using Merge = typename MergeImpl<Args...>::Type;
+
+template <typename List, typename Value>
+struct AppendImpl {
+    using Type = New<
+        typename List::Head,
+        typename AppendImpl<typename List::Rest, Value>::Type
+    >;
+};
+
+template <typename Value>
+struct AppendImpl<Nil, Value> {
+    using Type = New<Value, Nil>;
+};
+
+template <typename List, typename Value>
+using Append = typename AppendImpl<List, Value>::Type;
+
+template <typename List, int N>
+struct GetImpl {
+    using Type = typename GetImpl<typename List::Rest, N - 1>::Type;
+};
+
+template <typename List>
+struct GetImpl<List, 0> {
+    using Type = typename List::Head;
+};
+
+template <int N>
+struct GetImpl<Nil, N> {
+    using Type = Nil;
 };
 
 template <>
-struct type_list_new_impl<> {
-    using type = type_list_nil;
+struct GetImpl<Nil, 0> {
+    using Type = Nil;
 };
 
-template <typename... args>
-using type_list_new = typename type_list_new_impl<args...>::type;
+template <typename List, int N>
+using Get = typename GetImpl<List, N>::Type;
 
-template <typename list_, int n>
-struct type_list_get_impl {
-    using type = typename type_list_get_impl<typename list_::rest, n - 1>::type;
+template <typename Set, typename Value_>
+struct In {
+    static constexpr bool Value = std::is_same<typename Set::Head, Value_>::value ||
+        In<typename Set::Rest, Value_>::Value;
 };
 
-template <typename list_>
-struct type_list_get_impl<list_, 0> {
-    using type = typename list_::head;
+template <typename Value_>
+struct In<Nil, Value_> {
+    static constexpr bool Value = false;
 };
 
-template <int n>
-struct type_list_get_impl<type_list_nil, n> {
-    using type = void;
+template <typename List1, typename List2>
+struct DiffImpl {
+    template <bool AppendHead>
+    struct DiffImplBranch;
+    template <>
+    struct DiffImplBranch<false> {
+        using Type = New<
+            typename List1::Head,
+            typename DiffImpl<typename List1::Rest, List2>::Type
+        >;
+    };
+    template <>
+    struct DiffImplBranch<true> {
+        using Type = typename DiffImpl<typename List1::Rest, List2>::Type;
+    };
+    using Type = typename DiffImplBranch<In<List2, typename List1::Head>::Value>::Type;
 };
 
-template <>
-struct type_list_get_impl<type_list_nil, 0> {
-    using type = void;
+template <typename List2>
+struct DiffImpl<Nil, List2> {
+    using Type = Nil;
 };
 
-template <typename list_, int n>
-using type_list_get = typename type_list_get_impl<list_, n>::type;
+template <typename List1, typename List2>
+using Diff = typename DiffImpl<List1, List2>::Type;
 
-template <typename head, typename... rest>
-struct type_list_merge_impl {
-    using type = type_list<
-        typename head::head,
-        typename type_list_merge_impl<typename head::rest, rest...>::type
-    >;
-};
+template <typename List1, typename List2>
+using MergeNoRepeat = Merge<List1, Diff<List2, List1>>;
 
-template <typename... args>
-struct type_list_merge_impl<type_list_nil, args...> {
-    using type = typename type_list_merge_impl<args...>::type;
-};
-
-template <>
-struct type_list_merge_impl<type_list_nil> {
-    using type = type_list_nil;
-};
-
-template <typename head, typename... rest>
-using type_list_merge = typename type_list_merge_impl<head, rest...>::type;
-
-template <typename list_, typename t>
-struct type_list_push_impl {
-    using type = type_list<
-        typename list_::head,
-        typename type_list_push_impl<typename list_::rest, t>::type
-    >;
-};
-
-template <typename t>
-struct type_list_push_impl<type_list_nil, t> {
-    using type = type_list<t, type_list_nil>;
-};
-
-template <typename list_, typename t>
-using type_list_push = typename type_list_push_impl<list_, t>::type;
-
-template <typename list_, typename t>
-struct type_list_search {
-    static constexpr int value = std::is_same<typename list_::head, t>::value ? 0 :
-        (type_list_search<typename list_::rest, t>::value == -1 ?
-             -1 : type_list_search<typename list_::rest, t>::value + 1);
-};
-
-template <typename t>
-struct type_list_search<type_list_nil, t> {
-    static constexpr int value = -1;
-};
-
-template <typename list_, typename t>
-struct type_list_push_if_not_exist_impl {
-    using type = select_type<
-        std::is_same<typename list_::head, t>::value,
-        list_,
-        typename type_list_push_if_not_exist_impl<typename list_::rest, t>::type
-    >;
-};
-
-template <typename t>
-struct type_list_push_if_not_exist_impl<type_list_nil, t> {
-    using type = type_list<t, type_list_nil>;
-};
-
-template <typename list_, typename t>
-using type_list_push_if_not_exist = typename type_list_push_if_not_exist_impl<list_, t>::type;
-
-template <typename l1, typename l2>
-struct type_list_diff_impl {
-    using type = select_type<type_list_search<l1, typename l2::head>::value != -1,
-        typename type_list_diff_impl<l1, typename l2::rest>::type,
-        type_list<typename l2::head, typename type_list_diff_impl<l1, typename l2::rest>::type>
-    >;
-};
-
-template <typename l1>
-struct type_list_diff_impl<l1, type_list_nil> {
-    using type = type_list_nil;
-};
-
-template <typename l1, typename l2>
-using type_list_diff = typename type_list_diff_impl<l1, l2>::type;
-
-template <typename l1, typename l2>
-using type_list_merge_if_not_exist = type_list_merge<
-    l1,
-    type_list_diff<l1, l2>
->;
-
-template <typename list_>
-struct type_list_size {
-    static constexpr int value = type_list_size<typename list_::rest>::value + 1;
+template <typename List>
+struct Length {
+    static constexpr int Value = Length<typename List::Rest>::Value + 1;
 };
 
 template <>
-struct type_list_size<type_list_nil> {
-    static constexpr int value = 0;
+struct Length<Nil> {
+    static constexpr int Value = 0;
 };
 
-template <typename list_, typename t>
-struct type_list_count {
-    static constexpr int value = std::is_same<typename list_::head, t>::value ? 1 : 0 +
-        type_list_count<typename list_::rest, t>::value;
+template <typename List, typename Value_>
+struct Find {
+    template <bool IsInHead, typename List_, typename Value__>
+    struct FindBranch;
+    template <typename List_, typename Value__>
+    struct FindBranch<true, List_, Value__> {
+        static constexpr int V = 0;
+    };
+    template <typename List_, typename Value__>
+    struct FindBranch<false, List_, Value__> {
+        static constexpr int R = Find<typename List_::Rest, Value__>::Value;
+        static constexpr int V = R == -1 ? -1 : R + 1;
+    };
+    static constexpr int Value = FindBranch<
+        std::is_same<typename List::Head, Value_>::value,
+        List,
+        Value_
+    >::V;
 };
 
-template <typename t>
-struct type_list_count<type_list_nil, t> {
-    static constexpr int value = 0;
+template <typename Value_>
+struct Find<Nil, Value_> {
+    static constexpr int Value = -1;
 };
 
-template <bool is_same_size, typename l1, typename l2, int i>
-struct is_type_list_equal_;
-
-template <typename l1, typename l2, int i>
-struct is_type_list_equal_<true, l1, l2, i> {
-    static constexpr bool value = 
-        type_list_count<l1,
-            type_list_get<l2, i>
-        >::value == type_list_count<l2,
-            type_list_get<l2, i>
-        >::value &&
-        is_type_list_equal_<true, l1, l2, i - 1>::value;
+template <typename List>
+struct RemoveDuplicatedImpl {
+    template <bool RestHasHead, typename List_>
+    struct RemoveDuplicatedImplBranch;
+    template <typename List_>
+    struct RemoveDuplicatedImplBranch<true, List_> {
+        using Type = typename RemoveDuplicatedImpl<
+            typename List_::Rest
+        >::Type;
+    };
+    template <typename List_>
+    struct RemoveDuplicatedImplBranch<false, List_> {
+        using Type = New<
+            typename List_::Head,
+            typename RemoveDuplicatedImpl<
+                typename List_::Rest
+            >::Type
+        >;
+    };
+    using Type = typename RemoveDuplicatedImplBranch<
+        Find<
+            typename List::Rest,
+            typename List::Head
+        >::Value != -1,
+        List
+    >::Type;
 };
 
-template <typename l1, typename l2>
-struct is_type_list_equal_<true, l1, l2, -1> {
-    static constexpr bool value = true;
-};
-
-template <typename l1, typename l2, int i>
-struct is_type_list_equal_<false, l1, l2, i> {
-    static constexpr bool value = false;
-};
-
-template <typename l1, typename l2>
-struct is_type_list_equal {
-    static constexpr bool value = is_type_list_equal_<
-        type_list_size<l1>::value == type_list_size<l2>::value,
-        l1, l2, type_list_size<l2>::value - 1
-    >::value;
-};
-
-template <typename first_, typename second_>
-struct type_pair {
-    using first = first_;
-    using second = second_;
-};
-
-template <typename map_, typename key>
-struct type_map_get_impl {
-    using type = select_type<std::is_same<typename map_::head::first, key>::value,
-        typename map_::head::second,
-        typename type_map_get_impl<typename map_::rest, key>::type
-    >;
-};
-
-template <typename key>
-struct type_map_get_impl<type_list_nil, key> {
-    using type = void;
-};
-
-template <typename map_, typename key>
-using type_map_get = typename type_map_get_impl<map_, key>::type;
-
-template <typename map_, typename key, typename value>
-struct type_map_set_impl {
-    using type = select_type<std::is_same<typename map_::head::first, key>::value,
-        type_list<
-            type_pair<typename map_::head::first, value>,
-            typename map_::rest
-        >,
-        type_list<
-            typename map_::head,
-            typename type_map_set_impl<typename map_::rest, key, value>::type
-        >
-    >;
-};
-
-template <typename key, typename value>
-struct type_map_set_impl<type_list_nil, key, value> {
-    using type = type_list<
-        type_pair<key, value>,
-        type_list_nil
-    >;
-};
-
-template <typename map_, typename key, typename value>
-using type_map_set = typename type_map_set_impl<map_, key, value>::type;
-
-template <typename map_>
-struct type_map_key_list_impl {
-    using type = type_list<typename map_::head::first,
-        typename type_map_key_list_impl<typename map_::rest>::type
-    >;
-};
 
 template <>
-struct type_map_key_list_impl<type_list_nil> {
-    using type = type_list_nil;
+struct RemoveDuplicatedImpl<Nil> {
+    using Type = Nil;
 };
 
-template <typename map_>
-using type_map_key_list = typename type_map_key_list_impl<map_>::type;
-
-template <typename map_>
-struct type_map_value_list_impl {
-    using type = type_list<
-        typename map_::head::second,
-        typename type_map_value_list_impl<typename map_::rest>::type
-    >;
-};
-
-template <>
-struct type_map_value_list_impl<type_list_nil> {
-    using type = type_list_nil;
-};
-
-template <typename map_>
-using type_map_value_list = typename type_map_value_list_impl<map_>::type;
-
-template <typename map_, typename value_>
-struct type_map_search_value_impl {
-    using type = select_type<
-        std::is_same<typename map_::head::second, value_>::value,
-        type_list<
-            typename map_::head::first,
-            typename type_map_search_value_impl<typename map_::rest, value_>::type
-        >,
-        typename type_map_search_value_impl<typename map_::rest, value_>::type
-    >;
-};
-
-template <typename value_>
-struct type_map_search_value_impl<type_list_nil, value_> {
-    using type = type_list_nil;
-};
-
-template <typename map_, typename value_>
-using type_map_search_value = typename type_map_search_value_impl<map_, value_>::type;
-
-template <int head_, typename rest_>
-struct int_set {
-    static constexpr int head = head_;
-    using rest = rest_;
-};
-
-//struct int_set_nil {};
-typedef void int_set_nil;
-
-template <int... args>
-struct int_set_new_impl {};
-
-template <int head, int... rest>
-struct int_set_new_impl<head, rest...> {
-    using type = int_set<head, typename int_set_new_impl<rest...>::type>;
-};
-
-template <int head>
-struct int_set_new_impl<head> {
-    using type = int_set<head, int_set_nil>;
-};
-
-template <>
-struct int_set_new_impl<> {
-    using type = int_set_nil;
-};
-
-template <int... args>
-using int_set_new = typename int_set_new_impl<args...>::type;
-
-template <typename set_, int n>
-struct int_set_get {
-    static constexpr int value = int_set_get<typename set_::rest, n - 1>::value;
-};
-
-template <typename set_>
-struct int_set_get<set_, 0> {
-    static constexpr int value = set_::head;
-};
-
-template <typename set_, int value>
-struct int_set_insert_impl {
-    using type = select_type<(value == set_::head),
-        set_,
-        select_type<(value < set_::head),
-            int_set<value, set_>,
-            int_set<set_::head, typename int_set_insert_impl<typename set_::rest, value>::type>
-        >
-    >;
-};
-
-template <int value>
-struct int_set_insert_impl<int_set_nil, value> {
-    using type = int_set<value, int_set_nil>;
-};
-
-template <typename set_, int value>
-using int_set_insert = typename int_set_insert_impl<set_, value>::type;
-
-template <typename set_, int value>
-struct int_set_remove_impl {
-    using type = select_type<(value == set_::head),
-        typename set_::rest,
-        int_set<set_::head, typename int_set_remove_impl<typename set_::rest, value>::type>
-    >;
-};
-
-template <int value>
-struct int_set_remove_impl<int_set_nil, value> {
-    using type = int_set_nil;
-};
-
-template <typename set_, int value>
-using int_set_remove = typename int_set_remove_impl<set_, value>::type;
-
-template <typename set_, int n>
-struct int_set_add_impl {
-    using type = int_set<set_::head + n, typename int_set_add_impl<typename set_::rest, n>::type>;
-};
-
-template <int n>
-struct int_set_add_impl<int_set_nil, n> {
-    using type = int_set_nil;
-};
-
-template <typename set_, int n>
-using int_set_add = typename int_set_add_impl<set_, n>::type;
-
-template <typename head, typename... rest>
-struct int_set_union_impl {
-    using type = typename int_set_union_impl<
-        head,
-        typename int_set_union_impl<rest...>::type
-    >::type;
-};
-
-template <typename set1, typename set2>
-struct int_set_union_impl<set1, set2> {
-    using type = int_set_insert<
-        typename int_set_union_impl<set1, typename set2::rest>::type,
-        set2::head
-    >;
-};
-
-template <typename set_>
-struct int_set_union_impl<set_, int_set_nil> {
-    using type = set_;
-};
-
-template <typename set_>
-struct int_set_union_impl<int_set_nil, set_> {
-    using type = set_;
-};
-
-template <>
-struct int_set_union_impl<int_set_nil, int_set_nil> {
-    using type = int_set_nil;
-};
-
-template <typename head, typename... rest>
-using int_set_union = typename int_set_union_impl<head, rest...>::type;
-
-template <typename set_, int v>
-struct int_set_has {
-    static constexpr bool value = (v == set_::head) ||
-        int_set_has<typename set_::rest, v>::value;
-};
-
-template <int v>
-struct int_set_has<int_set_nil, v> {
-    static constexpr bool value = false;
-};
-
-template <typename set1, typename set2>
-struct int_set_diff_impl {
-    using type = select_type<
-        int_set_has<set1, set2::head>::value,
-        typename int_set_diff_impl<set1, typename set2::rest>::type,
-        int_set_insert<
-            typename int_set_diff_impl<set1, typename set2::rest>::type,
-            set2::head
-        >
-    >;
-};
-
-template <typename set1>
-struct int_set_diff_impl<set1, int_set_nil> {
-    using type = int_set_nil;
-};
-
-template <typename set1, typename set2>
-using int_set_diff = typename int_set_diff_impl<set1, set2>::type;
-
-template <int n, int i>
-struct int_set_range_impl {
-    using type = int_set<
-        n - i,
-        typename int_set_range_impl<n, i - 1>::type
-    >;
-};
-
-template <int n>
-struct int_set_range_impl<n, 0> {
-    using type = int_set_nil;
-};
-
-template <int n>
-using int_set_range = typename int_set_range_impl<n, n>::type;
-
-template <typename set_, int n>
-struct int_set_search {
-    static constexpr int value = set_::head == n ? 0 :
-        (int_set_search<typename set_::rest, n>::value == -1 ?
-             -1 : int_set_search<typename set_::rest, n>::value + 1);
-};
-
-template <int n>
-struct int_set_search<int_set_nil, n> {
-    static constexpr int value = -1;
-};
-
-template <typename set_, int from, int to>
-using int_set_replace = select_type<
-    int_set_has<set_, from>::value,
-    int_set_insert<
-        int_set_remove<set_, from>,
-        to
-    >,
-    set_
->;
+template <typename List>
+using RemoveDuplicated = typename RemoveDuplicatedImpl<List>::Type;
 }
+
+template <typename First_, typename Second_>
+struct TypeTypePair {
+    using First = First_;
+    using Second = Second_;
+};
+
+template <int First_, typename Second_>
+struct IntTypePair {
+    static constexpr int First = First_;
+    using Second = Second_;
+};
+
+namespace TypeTypeMap {
+template <typename Map, typename Key, typename Value>
+struct Set {
+    using HeadKey = Key;
+    using HeadValue = Value;
+    using Rest = Map;
+    template <typename K>
+    struct Get {
+        using Type = typename Map::template Get<K>::Type;
+    };
+    template <>
+    struct Get<Key> {
+        using Type = Value;
+    };
+};
+
+template <typename Key, typename Value>
+struct Set<Nil, Key, Value> {
+    using HeadKey = Key;
+    using HeadValue = Value;
+    using Rest = Nil;
+    template <typename K>
+    struct Get {
+        using Type = Nil;
+    };
+    template <>
+    struct Get<Key> {
+        using Type = Value;
+    };
+};
+
+template <typename Map, typename Key>
+struct GetImpl {
+    using Type = typename Map::template Get<Key>::Type;
+};
+
+template <typename Key>
+struct GetImpl<Nil, Key> {
+    using Type = Nil;
+};
+
+template <typename Map, typename Key>
+using Get = typename GetImpl<Map, Key>::Type;
+}
+
+namespace IntSet {
+template <int Head_, typename Rest_>
+struct New {
+    static constexpr int Head = Head_;
+    using Rest = Rest_;
+};
+
+template <typename Set, int N>
+struct AddImpl {
+    using Type = New<
+        Set::Head + N,
+        typename AddImpl<typename Set::Rest, N>::Type
+    >;
+};
+
+template <int N>
+struct AddImpl<Nil, N> {
+    using Type = Nil;
+};
+
+template <typename Set, int N>
+using Add = typename AddImpl<Set, N>::Type;
+
+template <typename Set, int Value>
+struct InsertImpl {
+    template <int Branch, typename S>
+    struct InsertImplBranch;
+    template <typename S>
+    struct InsertImplBranch<0, S> {
+        using Type = S;
+    };
+    
+    template <typename S>
+    struct InsertImplBranch<1, S> {
+        using Type = IntSet::New<
+            Value,
+            S
+        >;
+    };
+    
+    template <typename S>
+    struct InsertImplBranch<2, S> {
+        using Type = IntSet::New<
+            S::Head,
+            typename InsertImpl<typename S::Rest, Value>::Type
+        >;
+    };
+    static constexpr int Branch = Set::Head == Value ? 0 :
+        (Set::Head > Value ? 1 : 2);
+    using Type = typename InsertImplBranch<Branch, Set>::Type;
+};
+
+template <int Value>
+struct InsertImpl<Nil, Value> {
+    using Type = IntSet::New<Value, Nil>;
+};
+
+template <typename Set, int Value>
+using Insert = typename InsertImpl<Set, Value>::Type;
+
+template <int I, int J>
+struct RangeImpl {
+    using Type = New<
+        I,
+        typename RangeImpl<I + 1, J>::Type
+    >;
+};
+
+template <int I>
+struct RangeImpl<I, I> {
+    using Type = Nil;
+};
+
+template <int I, int J>
+using Range = typename RangeImpl<I, J>::Type;
+
+template <typename Set, int Value_>
+struct In {
+    static constexpr bool Value = Set::Head == Value_ ||
+        In<typename Set::Rest, Value_>::Value;
+};
+
+template <int Value_>
+struct In<Nil, Value_> {
+    static constexpr bool Value = false;
+};
+
+template <typename Set, template <int S, typename T> class Func>
+struct ReduceImpl {
+    using Type = Func<Set::Head, typename ReduceImpl<typename Set::Rest, Func>::Type>;
+};
+
+template <template <int S, typename T> class Func>
+struct ReduceImpl<Nil, Func> {
+    using Type = Nil;
+};
+
+template <typename Set, template <int S, typename T> class Func>
+using Reduce = typename ReduceImpl<Set, Func>::Type;
+
+template <typename... Args>
+struct UnionImpl;
+
+template <typename First, typename... Rest>
+struct UnionImpl<First, Rest...> {
+    using Type = typename UnionImpl<First, UnionImpl<Rest...>>::Type;
+};
+
+template <typename Set1, typename Set2>
+struct UnionImpl<Set1, Set2> {
+    using Type = Insert<
+        typename UnionImpl<Set1, typename Set2::Rest>::Type,
+        Set2::Head
+    >;
+};
+
+template <typename Set1>
+struct UnionImpl<Set1, Nil> {
+    using Type = Set1;
+};
+
+template <typename... Args>
+using Union = typename UnionImpl<Args...>::Type;
+
+template <typename Set1, typename Set2>
+struct DiffImpl {
+    template <bool IsHeadEqual, typename S1, typename S2>
+    struct DiffImplBranch;
+    template <typename S1, typename S2>
+    struct DiffImplBranch<true, S1, S2> {
+        using Type = typename DiffImpl<typename S1::Rest, S2>::Type;
+    };
+    template <typename S1, typename S2>
+    struct DiffImplBranch<false, S1, S2> {
+        using Type = New<
+            S1::Head,
+            typename DiffImpl<typename S1::Rest, S2>::Type
+        >;
+    };
+    using Type = typename DiffImplBranch<Set1::Head == Set2::Head, Set1, Set2>::Type;
+};
+
+template <typename Set1>
+struct DiffImpl<Set1, Nil> {
+    using Type = Set1;
+};
+
+template <typename Set2>
+struct DiffImpl<Nil, Set2> {
+    using Type = Nil;
+};
+
+template <>
+struct DiffImpl<Nil, Nil> {
+    using Type = Nil;
+};
+
+template <typename Set1, typename Set2>
+using Diff = typename DiffImpl<Set1, Set2>::Type;
+
+template <typename Set, int Value>
+struct RemoveImpl {
+    template <bool IsInHead, typename Set_, int Value_>
+    struct RemoveImplBranch;
+    template <typename Set_, int Value_>
+    struct RemoveImplBranch<true, Set_, Value_> {
+        using Type = typename Set_::Rest;
+    };
+    template <typename Set_, int Value_>
+    struct RemoveImplBranch<false, Set_, Value_> {
+        using Type = New<
+            Set_::Head,
+            typename RemoveImpl<typename Set_::Rest, Value>::Type
+        >;
+    };
+    using Type = typename RemoveImplBranch<Set::Head == Value, Set, Value>::Type;
+};
+
+template <int Value>
+struct RemoveImpl<Nil, Value> {
+    using Type = Nil;
+};
+
+template <typename Set, int Value>
+using Remove = typename RemoveImpl<Set, Value>::Type;
+
+template <typename Set>
+struct Length {
+    static constexpr int Value = Length<typename Set::Rest>::Value + 1;
+};
+
+template <>
+struct Length<Nil> {
+    static constexpr int Value = 0;
+};
+
+template <typename Set>
+struct ToArray {
+    static constexpr std::array<int, Length<Set>::Value> Array() {
+        std::array<int, Length<Set>::Value> Result = {};
+        Result[0] = Set::Head;
+        auto Rest = ToArray<typename Set::Rest>::Array();
+        for (int i = 0; i < Length<typename Set::Rest>::Value; ++i) {
+            Result[i + 1] = Rest[i];
+        }
+        return Result;
+    }
+};
+
+template <>
+struct ToArray<Nil> {
+    static constexpr std::array<int, 0> Array() {
+        return std::array<int, 0>();
+    }
+};
+
+template <typename Arr, int i>
+struct FromArrayImpl {
+    using Type = Insert<
+        typename FromArrayImpl<Arr, i - 1>::Type,
+        Arr::Array[i - 1]
+    >;
+};
+
+template <typename Arr>
+struct FromArrayImpl<Arr, 0> {
+    using Type = Nil;
+};
+
+template <typename Arr>
+using FromArray = typename FromArrayImpl<
+    Arr,
+    std::tuple_size<decltype(Arr::Array)>::value
+>::Type;
+
+template <int... Args>
+struct FromVaradicImpl;
+
+template <int Head, int... Rest>
+struct FromVaradicImpl<Head, Rest...> {
+    using Type = IntSet::Insert<
+        typename FromVaradicImpl<Rest...>::Type,
+        Head
+    >;
+};
+
+template <int Head>
+struct FromVaradicImpl<Head> {
+    using Type = IntSet::New<Head, Nil>;
+};
+
+template <int... Args>
+using FromVaradic = typename FromVaradicImpl<Args...>::Type;
+}
+
+namespace IntTypeMap {
+template <typename Map, int Key, typename Value>
+struct Set {
+    static constexpr int HeadKey = Key;
+    using HeadValue = Value;
+    using Rest = Map;
+    template <int K>
+    struct Get {
+        using Type = typename Map::template Get<K>::Type;
+    };
+    template <>
+    struct Get<Key> {
+        using Type = Value;
+    };
+};
+
+template <int Key, typename Value>
+struct Set<Nil, Key, Value> {
+    static constexpr int HeadKey = Key;
+    using HeadValue = Value;
+    using Rest = Nil;
+    template <int K>
+    struct Get {
+        using Type = Nil;
+    };
+    template <>
+    struct Get<Key> {
+        using Type = Value;
+    };
+};
+
+template <typename Map, int Key>
+struct GetImpl {
+    using Type = typename Map::template Get<Key>::Type;
+};
+
+template <int Key>
+struct GetImpl<Nil, Key> {
+    using Type = Nil;
+};
+
+template <typename Map, int Key>
+using Get = typename GetImpl<Map, Key>::Type;
+
+template <typename Map>
+struct KeysImpl {
+    using Type = IntSet::Insert<
+        typename KeysImpl<typename Map::Rest>::Type,
+        Map::HeadKey
+    >;
+};
+
+template <>
+struct KeysImpl<Nil> {
+    using Type = Nil;
+};
+
+template <typename Map>
+using Keys = typename KeysImpl<Map>::Type;
+
+template <typename Map, template <int K, typename V> class Func>
+struct ApplyImpl {
+    using Type = Set<
+        typename ApplyImpl<typename Map::Rest, Func>::Type,
+        Map::HeadKey,
+        Func<Map::HeadKey, typename Map::HeadValue>
+    >;
+};
+
+template <template <int K, typename V> class Func>
+struct ApplyImpl<Nil, Func> {
+    using Type = Nil;
+};
+
+template <typename Map, template <int K, typename V> class Func>
+using Apply = typename ApplyImpl<
+    Map,
+    Func
+>::Type;
+}
+
+/*
+Deprecated for low efficiency
+
+namespace IntTypeMapOld {
+template <typename Map, int Key>
+struct GetImpl {
+    template <bool IsInHead, typename M>
+    struct GetImplBranch;
+    template <typename M>
+    struct GetImplBranch<true, M> {
+        using Type = typename M::Head::Second;
+    };
+    
+    template <typename M>
+    struct GetImplBranch<false, M> {
+        using Type = typename GetImpl<typename M::Rest, Key>::Type;
+    };
+    static constexpr bool IsInHead = Map::Head::First == Key;
+    using Type = typename GetImplBranch<IsInHead, Map>::Type;
+};
+
+template <int Key>
+struct GetImpl<Nil, Key> {
+    using Type = Nil;
+};
+
+template <typename Map, int Key>
+using Get = typename GetImpl<Map, Key>::Type;
+
+template <typename Map, int Key, typename Value>
+struct SetImpl {
+    template <bool IsInHead, typename M>
+    struct SetImplBranch;
+    template <typename M>
+    struct SetImplBranch<true, M> {
+        using Type = TypeList::New<
+            IntTypePair<M::Head::First, Value>,
+            typename M::Rest
+        >;
+    };
+    
+    template <typename M>
+    struct SetImplBranch<false, M> {
+        using Type = TypeList::New<
+            typename M::Head,
+            typename SetImpl<typename M::Rest, Key, Value>::Type
+        >;
+    };
+    static constexpr bool IsInHead = Map::Head::First == Key;
+    using Type = typename SetImplBranch<IsInHead, Map>::Type;
+};
+
+template <int Key, typename Value>
+struct SetImpl<Nil, Key, Value> {
+    using Type = TypeList::New<IntTypePair<Key, Value>, Nil>;
+};
+
+template <typename Map, int Key, typename Value>
+using Set = typename SetImpl<Map, Key, Value>::Type;
+
+template <typename Map>
+struct KeysImpl {
+    using Type = IntSet::Insert<
+        typename KeysImpl<typename Map::Rest>::Type,
+        Map::Head::First
+    >;
+};
+
+template <>
+struct KeysImpl<Nil> {
+    using Type = Nil;
+};
+
+template <typename Map>
+using Keys = typename KeysImpl<Map>::Type;
+}
+*/

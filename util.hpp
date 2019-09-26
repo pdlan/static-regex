@@ -678,3 +678,8 @@ template <typename Map>
 using Keys = typename KeysImpl<Map>::Type;
 }
 */
+
+template <int V>
+struct IntWrapper {
+    static constexpr int Value = V;
+};

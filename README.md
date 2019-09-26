@@ -7,6 +7,7 @@ Example:
 #include <iostream>
 #include "util.hpp"
 #include "regex.hpp"
+#include "parser.hpp"
 
 using namespace std;
 
@@ -17,9 +18,11 @@ int main() {
         Digit,
         Star<Digit>,
         Option<Concat<Char<'.'>, Star<Digit>>>,
-        Option<Concat<CharClass<'e', 'E'>, Option<CharClass<'+', '-'>>, Digit, Star<Digit>>>,
+        Option<Concat<CharClass<'e', 'E'>, Option<CharClass<'+', '-'>>, Plus<Digit>>>,
         End
     >>;
+    using Decimal2 = REGEX("^[+\\-]?[0-9]+(.[0-9]*)?([eE][+\\-]?[0-9]+)?$");
+    // Same as Decimal, but it's based on a Clang and G++ extension, NOT C++ STANDARD.
     cout << Decimal::match("123") << endl; // 1
     cout << Decimal::match("abc") << endl; // 0
     cout << Decimal::match("1.") << endl; // 1
@@ -27,6 +30,8 @@ int main() {
     cout << Decimal::match("+1.1e+2") << endl; // 1
     cout << Decimal::match("+1.1e-2") << endl; // 1
     cout << Decimal::match("+1.1E2") << endl; // 1
+    static_assert(!Decimal::match("abc"));
+    static_assert(Decimal::match("+1.1E2"));
     return 0;
 }
 ```

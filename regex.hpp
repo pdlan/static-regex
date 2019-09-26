@@ -626,14 +626,19 @@ template <char C>
 struct Char {
     using NFA_ = SymbolNFA<C>;
     using Set = IntSet::New<C, Nil>;
+    static constexpr int Value = C;
 };
 
 struct Begin {
     using NFA_ = SymbolNFA<BeginSymbol>;
+    using Set = IntSet::New<BeginSymbol, Nil>;
+    static constexpr int Value = BeginSymbol;
 };
 
 struct End {
     using NFA_ = SymbolNFA<EndSymbol>;
+    using Set = IntSet::New<EndSymbol, Nil>;
+    static constexpr int Value = EndSymbol;
 };
 
 struct Empty {
@@ -673,8 +678,11 @@ struct Concat<Head> {
     using NFA_ = typename Head::NFA_;;
 };
 
+template <typename R, int... N>
+struct Repeat;
+
 template <typename R, int N>
-struct Repeat {
+struct Repeat<R, N> {
     using NFA_ = ConcatNFA<typename R::NFA_, typename Repeat<R, N - 1>::NFA_>;
 };
 
@@ -687,6 +695,14 @@ template <typename R>
 struct Repeat<R, 0> {
     using NFA_ = EmptyNFA;
 };
+
+template <typename R, int N1, int N2>
+struct Repeat<R, N1, N2> {
+    using NFA_ = ConcatNFA<typename Repeat<R, N1>::NFA_, typename Repeat<Option<R>, N2 - N1>::NFA_>;
+};
+
+template <typename R, int N>
+using AtLeast = Concat<Repeat<R, N>, Star<R>>;
 
 template <char... Args>
 struct CharClass {
@@ -703,6 +719,12 @@ struct Range {
 template <typename... Args>
 struct CharClassUnion {
     using Set = IntSet::Union<typename Args::Set...>;
+    using NFA_ = CharClassFromSetNFA<Set>;
+};
+
+template <typename Set_>
+struct CharClassFromSet {
+    using Set = Set_;
     using NFA_ = CharClassFromSetNFA<Set>;
 };
 
@@ -728,11 +750,11 @@ private:
     using DFA_ = NFAToDFA<NFA_>;
     using MinimalDFA = DFA_;
     template <typename Set>
-    static bool is_final(int state) {
+    static constexpr bool is_final(int state) {
         return Set::Head == state || is_final<typename Set::Rest>(state);
     }
     template <>
-    static bool is_final<Nil>(int state) {
+    static constexpr bool is_final<Nil>(int state) {
         return false;
     }
 public:
@@ -744,6 +766,39 @@ public:
                 return false;
             }
             state = MinimalDFA::TransitionTable::Table[state][c];
+        }
+        if (state == -1) {
+            return false;
+        }
+        state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
+        return is_final<typename MinimalDFA::FinalStates>(state);
+    }
+    static constexpr bool match(const char *str, size_t length) {
+        int state = MinimalDFA::StartState;
+        state = MinimalDFA::TransitionTable::Table[state][BeginSymbol];
+        for (size_t i = 0; i < length; ++i) {
+            if (state == -1) {
+                return false;
+            }
+            state = MinimalDFA::TransitionTable::Table[state][str[i]];
+        }
+        if (state == -1) {
+            return false;
+        }
+        state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
+        return is_final<typename MinimalDFA::FinalStates>(state);
+    }
+    static constexpr bool match(const char *str) {
+        int state = MinimalDFA::StartState;
+        state = MinimalDFA::TransitionTable::Table[state][BeginSymbol];
+        for (size_t i = 0; str[i]; ++i) {
+            if (state == -1) {
+                return false;
+            }
+            state = MinimalDFA::TransitionTable::Table[state][str[i]];
+        }
+        if (state == -1) {
+            return false;
         }
         state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
         return is_final<typename MinimalDFA::FinalStates>(state);

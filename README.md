@@ -21,8 +21,12 @@ int main() {
         Option<Concat<CharClass<'e', 'E'>, Option<CharClass<'+', '-'>>, Plus<Digit>>>,
         End
     >>;
-    using Decimal2 = REGEX("^[+\\-]?[0-9]+(.[0-9]*)?([eE][+\\-]?[0-9]+)?$");
-    // Same as Decimal, but it's based on a Clang and G++ extension, NOT C++ STANDARD.
+    using Decimal2 = ParseRegex<'^', '[', '+', '\\', '-', ']', '?', '[', '0', '-', '9', ']', '+',
+                                '(', '.', '[', '0', '-', '9', ']', '*', ')', '?', '(', '[', 'e',
+                                'E', ']', '[', '+', '\\', '-', ']', '?', '[', '0', '-', '9', ']',
+                                '+', ')', '?', '$'>;
+    using Decimal3 = REGEX("^[+\\-]?[0-9]+(.[0-9]*)?([eE][+\\-]?[0-9]+)?$");
+    // Same as Decimal and Decimal2, but it's based on a Clang and G++ extension, NOT C++ STANDARD.
     cout << Decimal::match("123") << endl; // 1
     cout << Decimal::match("abc") << endl; // 0
     cout << Decimal::match("1.") << endl; // 1

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <array>
 #include <tuple>
-#include "util.h"
+#include "util.hpp"
 
 constexpr int BeginSymbol = 256;
 constexpr int EndSymbol = 257;
@@ -18,31 +18,31 @@ struct NFA {
 };
 
 using EmptyNFA = NFA<0, 1, 2,
-    TypeList::New<
-        IntTypeMap::Set<Nil, Epsilon, IntSet::New<1, Nil>>,
-    Nil>
+    TypeList::List<
+        TypeTypeMap::Map<TypeTypePair<std::integral_constant<int, Epsilon>, IntSet::Set<1>>>
+    >
 >;
 
 template <int Symbol>
 using SymbolNFA = NFA<0, 1, 2,
-    TypeList::New<
-        IntTypeMap::Set<Nil, Symbol, IntSet::New<1, Nil>>,
-    Nil>
+    TypeList::List<
+        TypeTypeMap::Map<TypeTypePair<std::integral_constant<int, Symbol>, IntSet::Set<1>>>
+    >
 >;
 
 template <int N>
 struct TransitionTableAdder {
-    template <int Key, typename Value>
+    template <typename Key, typename Value>
     using Add = IntSet::Add<Value, N>;
     template <typename M>
-    using Type = IntTypeMap::Apply<M, Add>;
+    using Type = TypeTypeMap::Transform<M, Add>;
 };
 
 template <typename NFA1, typename NFA2>
 using ConcatNFA = NFA<0, NFA1::States + NFA2::FinalState - 1, NFA1::States + NFA2::States - 1,
     TypeList::Merge<
         typename NFA1::TransitionTable,
-        TypeList::Apply<
+        TypeList::Transform<
             typename NFA2::TransitionTable,
             TransitionTableAdder<NFA1::States - 1>::template Type
         >
@@ -72,17 +72,12 @@ struct UnionNFAImpl {
         using Type = TypeList::Merge<
             typename MergeTransitionTable<Rest...>::Type,
             TypeList::Append<
-                TypeList::Apply<
+                TypeList::Transform<
                     typename Head::TransitionTable,
                     TransitionTableAdder<MergeTransitionTable<Rest...>::States>::template Type
                 >,
-                IntTypeMap::Set<
-                    Nil,
-                    Epsilon,
-                    IntSet::New<
-                        StatesCounter<Args...>::States - 1,
-                        Nil
-                    >
+                TypeTypeMap::Map<
+                    TypeTypePair<std::integral_constant<int, Epsilon>, IntSet::Set<StatesCounter<Args...>::States - 1>>
                 >
             >
         >;
@@ -91,17 +86,12 @@ struct UnionNFAImpl {
     struct MergeTransitionTable<Head> {
         static constexpr int States = Head::States + 1;
         using Type = TypeList::Append<
-            TypeList::Apply<
+            TypeList::Transform<
                 typename Head::TransitionTable,
                 TransitionTableAdder<1>::template Type
             >,
-            IntTypeMap::Set<
-                Nil,
-                Epsilon,
-                IntSet::New<
-                    StatesCounter<Args...>::States - 1,
-                    Nil
-                >
+            TypeTypeMap::Map<
+                TypeTypePair<std::integral_constant<int, Epsilon>, IntSet::Set<StatesCounter<Args...>::States - 1>>
             >
         >;
     };
@@ -116,16 +106,15 @@ struct UnionNFAImpl {
     };
     template <typename Head>
     struct FirstTransitionSet<Head> {
-        using Type = IntSet::New<
-            StatesCounter<Head>::StartState,
-            Nil
-        >;
+        using Type = IntSet::Set<StatesCounter<Head>::StartState>;
     };
     using MergedTransitionTable = typename MergeTransitionTable<Args...>::Type;
     using FirstSet = typename FirstTransitionSet<Args...>::Type;
-    using TransitionTable = TypeList::New<
-        IntTypeMap::Set<Nil, Epsilon, FirstSet>,
-        MergedTransitionTable
+    using TransitionTable = TypeList::PushFront<
+        MergedTransitionTable,
+        TypeTypeMap::Map<
+            TypeTypePair<std::integral_constant<int, Epsilon>, FirstSet>
+        >
     >;
     using Type = NFA<0, StatesCounter<Args...>::States - 1, StatesCounter<Args...>::States,
         TransitionTable
@@ -138,27 +127,25 @@ using UnionNFA = typename UnionNFAImpl<Args...>::Type;
 template <typename NFA_>
 using StarNFA = NFA<0, NFA_::States + 1, NFA_::States + 2,
     TypeList::Merge<
-        TypeList::New<
-            IntTypeMap::Set<Nil, Epsilon,
-                IntSet::New<
-                    1,
-                    IntSet::New<NFA_::States + 1, Nil>
+        TypeList::List<
+            TypeTypeMap::Map<
+                TypeTypePair<
+                    std::integral_constant<int, Epsilon>,
+                    IntSet::Set<1, NFA_::States + 1>
                 >
-            >,
-            Nil
+            >
         >,
-        TypeList::Apply<
+        TypeList::Transform<
             typename NFA_::TransitionTable,
             TransitionTableAdder<1>::template Type
         >,
-        TypeList::New<
-            IntTypeMap::Set<Nil, Epsilon,
-                IntSet::New<
-                    1,
-                    IntSet::New<NFA_::States + 1, Nil>
+        TypeList::List<
+            TypeTypeMap::Map<
+                TypeTypePair<
+                    std::integral_constant<int, Epsilon>,
+                    IntSet::Set<1, NFA_::States + 1>
                 >
-            >,
-            Nil
+            >
         >
     >
 >;
@@ -167,10 +154,10 @@ template <typename NFA_>
 using PlusNFA = NFA<0, NFA_::States, NFA_::States + 1,
     TypeList::Append<
         typename NFA_::TransitionTable,
-        IntTypeMap::Set<Nil, Epsilon,
-            IntSet::New<
-                0,
-                IntSet::New<NFA_::States, Nil>
+        TypeTypeMap::Map<
+            TypeTypePair<
+                std::integral_constant<int, Epsilon>,
+                IntSet::Set<0, NFA_::States>
             >
         >
     >
@@ -178,140 +165,94 @@ using PlusNFA = NFA<0, NFA_::States, NFA_::States + 1,
 
 template <typename NFA_>
 using OptionNFA = NFA<0, NFA_::States, NFA_::States + 1,
-    TypeList::New<
-        IntTypeMap::Set<Nil, Epsilon,
-            IntSet::New<
-                1,
-                IntSet::New<NFA_::States, Nil>
-            >
-        >,
-        TypeList::Apply<
+    TypeList::PushFront<
+        TypeList::Transform<
             typename NFA_::TransitionTable,
             TransitionTableAdder<1>::template Type
+        >,
+        TypeTypeMap::Map<
+            TypeTypePair<
+                std::integral_constant<int, Epsilon>,
+                IntSet::Set<1, NFA_::States>
+            >
         >
     >
 >;
 
 template <int... Args>
-struct CharClassNFAImpl {
-    template <int...>
-    struct TransitionMap;
-    template <int Head, int... Rest>
-    struct TransitionMap<Head, Rest...> {
-        using Type = IntTypeMap::Set<
-            typename TransitionMap<Rest...>::Type,
-            Head,
-            IntSet::New<1, Nil>
-        >;
-    };
-    template <int Head>
-    struct TransitionMap<Head> {
-        using Type = IntTypeMap::Set<
-            Nil,
-            Head,
-            IntSet::New<1, Nil>
-        >;
-    };
-    using Type = NFA<0, 1, 2,
-        TypeList::New<
-            typename TransitionMap<Args...>::Type,
-            Nil
+using CharClassNFA = NFA<0, 1, 2,
+    TypeList::List<
+        TypeTypeMap::Map<
+            TypeTypePair<
+                std::integral_constant<int, Args>,
+                IntSet::Set<1>
+            >...
         >
-    >;
+    >
+>;
+
+template <typename S>
+struct CharClassFromSetNFAImpl;
+
+template <template <int...> class S, int... Args>
+struct CharClassFromSetNFAImpl<S<Args...>> {
+    using Type = CharClassNFA<Args...>;
 };
 
-template <typename Set>
-struct CharClassFromSetNFAImpl {
-    template <typename Set_>
-    struct TransitionMap {
-        using Type = IntTypeMap::Set<
-            typename TransitionMap<typename Set_::Rest>::Type,
-            Set_::Head,
-            IntSet::New<1, Nil>
-        >;
-    };
-    template <>
-    struct TransitionMap<Nil> {
-        using Type = Nil;
-    };
-    using Type = NFA<0, 1, 2,
-        TypeList::New<
-            typename TransitionMap<Set>::Type,
-            Nil
-        >
-    >;
-};
-
-template <int... Args>
-using CharClassNFA = typename CharClassNFAImpl<Args...>::Type;
-
-template <typename Set>
-using CharClassFromSetNFA = typename CharClassFromSetNFAImpl<Set>::Type;
+template <typename S>
+using CharClassFromSetNFA = typename CharClassFromSetNFAImpl<S>::Type;
 
 template <size_t States, size_t Symbols>
-using TransitionTable = std::array<std::array<int, Symbols>, States>;
+using TransitionTable = ConstexprArray<ConstexprArray<int, Symbols>, States>;
 
-template <typename Subsets, typename Map, size_t Symbols>
-struct BuildDFATransitionMapImpl {
-    static constexpr std::array<int, Symbols> Build() {
-        std::array<int, Symbols> M = BuildDFATransitionMapImpl<
-            Subsets,
-            typename Map::Rest,
-            Symbols
-        >::Build();
-        M[Map::HeadKey] = TypeList::Find<Subsets, typename Map::HeadValue>::Value;
-        return M;
-    }
-};
+template <typename Subsets, typename Map, size_t Symbols, typename Index>
+struct BuildDFATransitionMapImpl;
 
-template <typename Subsets, size_t Symbols>
-struct BuildDFATransitionMapImpl<Subsets, Nil, Symbols> {
-    static constexpr std::array<int, Symbols> Build() {
-        std::array<int, Symbols> M = {};
-        for (size_t i = 0; i < Symbols; ++i) {
-            M[i] = -1;
-        }
-        return M;
+template <typename Subsets, typename Map, size_t Symbols, size_t... I>
+struct BuildDFATransitionMapImpl<Subsets, Map, Symbols, std::index_sequence<I...>> {
+    static constexpr ConstexprArray<int, Symbols> Build() {
+        return ConstexprArray<int, Symbols> (
+            int(TypeSet::Find<Subsets, TypeTypeMap::Get<Map, std::integral_constant<int, I>>>::Value)...
+        );
     }
 };
 
 template <typename Subsets, typename Map, size_t Symbols>
-constexpr std::array<int, Symbols> BuildDFATransitionMap() {
-    return BuildDFATransitionMapImpl<Subsets, Map, Symbols>::Build();
+static constexpr ConstexprArray<int, Symbols> BuildDFATransitionMap() {
+    return BuildDFATransitionMapImpl<Subsets, Map, Symbols, std::make_index_sequence<Symbols>>::Build();
 }
 
 template <typename Subsets, typename SubsetTransitionTable>
-struct BuildDFATransitionTableImpl {
-    static constexpr int Length = TypeList::Length<Subsets>::Value;
-    static constexpr TransitionTable<Length, SymbolsCount> Build() {
-        auto Table = BuildDFATransitionTableImpl<
-            Subsets,
-            typename SubsetTransitionTable::Rest
-        >::Build();
-        //using Pair = typename SubsetTransitionTable::Head;
-        int DFAState = TypeList::Find<Subsets, typename SubsetTransitionTable::HeadKey>::Value;
-        std::array<int, SymbolsCount> Map = BuildDFATransitionMap<
-            Subsets,
-            typename SubsetTransitionTable::HeadValue,
+struct BuildDFATransitionTable;
+
+template <template <typename...> class L, typename... Args, typename SubsetTransitionTable>
+struct BuildDFATransitionTable<L<Args...>, SubsetTransitionTable> {
+    static constexpr size_t Size = L<Args...>::Size;
+    static constexpr TransitionTable<L<Args...>::Size, SymbolsCount> Table = TransitionTable<L<Args...>::Size, SymbolsCount>(
+        BuildDFATransitionMap<
+            L<Args...>,
+            TypeTypeMap::Get<
+                SubsetTransitionTable,
+                Args,
+                TypeTypeMap::Map<>
+            >,
             SymbolsCount
-        >();
-        Table[DFAState] = Map;
-        return Table;
-    }
+        >()...
+    );
 };
 
-template <typename Subsets>
-struct BuildDFATransitionTableImpl<Subsets, Nil> {
-    static constexpr int Length = TypeList::Length<Subsets>::Value;
-    static constexpr TransitionTable<Length, SymbolsCount> Build() {
-        return TransitionTable<Length, SymbolsCount>();
-    }
+template <template <typename...> class L, typename... Args, typename SubsetTransitionTable>
+constexpr TransitionTable<L<Args...>::Size, SymbolsCount> BuildDFATransitionTable<L<Args...>, SubsetTransitionTable>::Table;
+
+template <typename L>
+struct ExtractIntImpl {
+    template <typename T, typename R>
+    using F = IntSet::Insert<R, T::value>;
+    using Type = TypeList::Reduce<L, F, IntSet::Set<>>;
 };
 
-template <typename Subsets, typename SubsetTransitionTable>
-struct BuildDFATransitionTable {
-    static constexpr auto Table = BuildDFATransitionTableImpl<Subsets, SubsetTransitionTable>::Build();
-};
+template <typename L>
+using ExtractInt = typename ExtractIntImpl<L>::Type;
 
 template <int StartState_, typename FinalStates_, typename TransitionTable_>
 struct DFA {
@@ -328,23 +269,25 @@ struct NFAToDFAImpl {
         template <int S, typename T>
         using Merge = IntSet::Union<
             T,
-            IntTypeMap::Get<
+            TypeTypeMap::Get<
                 TypeList::Get<
                     NFATransitionTable,
-                    S
+                    S,
+                    TypeTypeMap::Map<>
                 >,
-                Epsilon
+                std::integral_constant<int, Epsilon>,
+                IntSet::Set<>
             >
         >;
         using NextNewStates = IntSet::Diff<
-            IntSet::Reduce<NewStates, Merge>,
+            IntSet::Reduce<NewStates, Merge, IntSet::Set<>>,
             Visited
         >;
         using NextVisited = IntSet::Union<
             Visited,
             NextNewStates
         >;
-        static constexpr bool HasNext = !std::is_same<NextNewStates, Nil>::value;
+        static constexpr bool HasNext = !std::is_same<NextNewStates, IntSet::Set<>>::value;
         using Type = typename EpsilonClosureImpl<
             HasNext,
             NextNewStates,
@@ -357,7 +300,7 @@ struct NFAToDFAImpl {
     };
     template <typename States>
     using EpsilonClosure = typename EpsilonClosureImpl<true, States, States>::Type;
-    using StartStates = EpsilonClosure<IntSet::New<NFA_::StartState, Nil>>;
+    using StartStates = EpsilonClosure<IntSet::Set<NFA_::StartState>>;
     template <typename Subsets_, typename SubsetTransitionTable_>
     struct IterationResult {
         using Subsets = Subsets_;
@@ -370,67 +313,64 @@ struct NFAToDFAImpl {
             template <int S, typename T>
             using FindSymbols = IntSet::Union<
                 T,
-                IntTypeMap::Keys<TypeList::Get<NFATransitionTable, S>>
+                ExtractInt<TypeTypeMap::Keys<TypeList::Get<NFATransitionTable, S, TypeTypeMap::Map<>>>>
             >;
             using Symbols = IntSet::Remove<
-                IntSet::Reduce<Subset, FindSymbols>,
+                IntSet::Reduce<Subset, FindSymbols, IntSet::Set<>>,
                 Epsilon
             >;
-            template <typename S>
+            struct EmptyST {
+                using Subsets_ = TypeSet::Set<>;
+                using TransitionMap = TypeTypeMap::Map<>;
+            };
+            template <int S, typename T>
             struct F {
-                template <int St, typename T>
+                template <int St, typename R>
                 using G = IntSet::Union<
-                    T,
-                    IntTypeMap::Get<TypeList::Get<NFATransitionTable, St>, S::Head>
+                    R,
+                    TypeTypeMap::Get<
+                        TypeList::Get<NFATransitionTable, St, TypeTypeMap::Map<>>,
+                        std::integral_constant<int, S>,
+                        IntSet::Set<>
+                    >
                 >;
-                using NewSubset = EpsilonClosure<IntSet::Reduce<Subset, G>>;
-                using Subsets_ = TypeList::New<
-                    NewSubset,
-                    typename F<typename S::Rest>::Subsets_
-                >;
-                using TransitionMap = IntTypeMap::Set<
-                    typename F<typename S::Rest>::TransitionMap,
-                    S::Head,
+                using NewSubset = EpsilonClosure<IntSet::Reduce<Subset, G, IntSet::Set<>>>;
+                using Subsets_ = TypeSet::Insert<typename T::Subsets_, NewSubset>;
+                using TransitionMap = TypeTypeMap::Set<
+                    typename T::TransitionMap,
+                    std::integral_constant<int, S>,
                     NewSubset
                 >;
             };
-            template <>
-            struct F<Nil> {
-                using Subsets_ = Nil;
-                using TransitionMap = Nil;
-            };
-            using Type = F<Symbols>;
+            using Type = IntSet::Reduce<Symbols, F, EmptyST>;
         };
-        template <typename Subsets>
+        struct EmptyNext {
+            using NextNewSubsets_ = TypeSet::Set<>;
+            using NextSubsetTransitionTable_ = SubsetTransitionTable;
+        };
+        template <typename Subset, typename R>
         struct F {
-            using NewTL = typename NewSTFromSubset<typename Subsets::Head>::Type;
-            using NextNewSubsets_ = TypeList::MergeNoRepeat<
-                typename F<typename Subsets::Rest>::NextNewSubsets_,
+            using NewTL = typename NewSTFromSubset<Subset>::Type;
+            using NextNewSubsets_ = TypeSet::Union<
+                typename R::NextNewSubsets_,
                 typename NewTL::Subsets_
             >;
             using NextSubsetTransitionTable_ = TypeTypeMap::Set<
-                typename F<typename Subsets::Rest>::NextSubsetTransitionTable_,
-                typename Subsets::Head,
+                typename R::NextSubsetTransitionTable_,
+                Subset,
                 typename NewTL::TransitionMap
             >;
         };
-        template <>
-        struct F<Nil> {
-            using NextNewSubsets_ = Nil;
-            using NextSubsetTransitionTable_ = SubsetTransitionTable;
-        };
-        using Next = F<NewSubsets>;
-        using NextNewSubsets = TypeList::Diff<
-            TypeList::RemoveDuplicated<
-                typename Next::NextNewSubsets_
-            >,
+        using Next = TypeList::Reduce<NewSubsets, F, EmptyNext>;
+        using NextNewSubsets = TypeSet::Diff<
+            typename Next::NextNewSubsets_,
             Visited
         >;
         using NextTransitionTable = typename Next::NextSubsetTransitionTable_;
-        using NextVisited = TypeList::Merge<Visited, NextNewSubsets>;
-        static constexpr bool HasNext = !std::is_same<NextNewSubsets, Nil>::value;
+        using NextVisited = TypeSet::Union<Visited, typename Next::NextNewSubsets_>;
+        static constexpr bool HasNext = !std::is_same<NextNewSubsets, TypeSet::Set<>>::value;
         using Type = typename Iteration<HasNext, NextNewSubsets, NextVisited, NextTransitionTable>::Type;
-    };
+   };
     template <typename NewSubsets, typename Visited, typename SubsetTransitionTable>
     struct Iteration<false, NewSubsets, Visited, SubsetTransitionTable> {
         using Type = IterationResult<
@@ -440,39 +380,25 @@ struct NFAToDFAImpl {
     };
     using ST = typename Iteration<
         true,
-        TypeList::New<StartStates, Nil>,
-        TypeList::New<StartStates, Nil>,
-        Nil
+        TypeSet::Set<StartStates>,
+        TypeSet::Set<StartStates>,
+        TypeTypeMap::Map<>
     >::Type;
-    template <typename Subsets, int N>
-    struct FinalStates {
-        template <bool IsHeadFinal, typename S, int N_>
-        struct FinalStatesBranch;
-        template <typename S, int N_>
-        struct FinalStatesBranch<true, S, N_> {
-            using Type = IntSet::Insert<
-                typename FinalStates<typename S::Rest, N_ + 1>::Type,
-                N_
-            >;
+    template <typename T, typename R>
+    struct FinalStatesImpl {
+        template <bool>
+        struct Branch {
+            using Type = IntSet::Insert<R, TypeSet::Find<typename ST::Subsets, T>::Value>;
         };
-        template <typename S, int N_>
-        struct FinalStatesBranch<false, S, N_> {
-            using Type = typename FinalStates<typename S::Rest, N_ + 1>::Type;
+        template <>
+        struct Branch<false> {
+            using Type = R;
         };
-        using Type = typename FinalStatesBranch<
-            IntSet::In<
-                typename Subsets::Head,
-                NFA_::FinalState
-            >::Value,
-            Subsets,
-            N
-        >::Type;
+        using Type = typename Branch<IntSet::Contains<T, NFA_::FinalState>::Value>::Type;
     };
-    template <int N>
-    struct FinalStates<Nil, N> {
-        using Type = Nil;
-    };
-    using DFAFinalStates = typename FinalStates<typename ST::Subsets, 0>::Type;
+    template <typename T, typename R>
+    using FinalStates = typename FinalStatesImpl<T, R>::Type;
+    using DFAFinalStates = TypeList::Reduce<typename ST::Subsets, FinalStates, IntSet::Set<>>;
     using Type = DFA<
         0,
         DFAFinalStates,
@@ -484,8 +410,8 @@ template <typename NFA_>
 using NFAToDFA = typename NFAToDFAImpl<NFA_>::Type;
 
 template <size_t N, typename T>
-constexpr std::array<typename T::value_type, N> TruncateArray(T In) {
-    std::array<typename T::value_type, N> Result = {};
+constexpr ConstexprArray<typename T::value_type, N> TruncateArray(T In) {
+    ConstexprArray<typename T::value_type, N> Result;
     for (size_t i = 0; i < N; ++i) {
         Result[i] = In[i];
     }
@@ -494,27 +420,25 @@ constexpr std::array<typename T::value_type, N> TruncateArray(T In) {
 
 template <typename DFA_>
 struct MinimizeDFAImpl {
-    static constexpr int OldStates = std::tuple_size<decltype(DFA_::TransitionTable::Table)>::value;
+    static constexpr int OldStates = DFA_::TransitionTable::Table.size();
     static constexpr std::tuple<
-        std::array<
-            std::array<int, SymbolsCount>,
+        ConstexprArray<
+            ConstexprArray<int, SymbolsCount>,
             OldStates
         >,                              // transition table
         int,                            // states count
-        std::array<
-        int,
-            IntSet::Length<
-                typename DFA_::FinalStates
-            >::Value
+        ConstexprArray<
+            int,
+            DFA_::FinalStates::Size
         >,                              // final states
         int                             // final states count
     > MinimizeTransitionTable() {
         auto Table = DFA_::TransitionTable::Table;
         int States = OldStates;
-        std::array<int, OldStates> StatesToMerge = {};
-        std::array<int, OldStates> OldNewStatesMap = {};
-        auto FinalStates = IntSet::ToArray<typename DFA_::FinalStates>::Array();
-        int FinalStatesCount = std::tuple_size<decltype(FinalStates)>::value;
+        ConstexprArray<int, OldStates> StatesToMerge;
+        ConstexprArray<int, OldStates> OldNewStatesMap;
+        auto FinalStates = DFA_::FinalStates::Array;
+        int FinalStatesCount = FinalStates.size();
         for (int i = 0; i < States; ) {
             int StatesToMergeCount = 0;
             bool IsIFinal = false;
@@ -602,10 +526,9 @@ struct MinimizeDFAImpl {
     struct FinalStatesTemp {
         static constexpr auto Array = TruncateArray<
             std::get<3>(NewT),
-            std::array<int,
-                IntSet::Length<
-                    typename DFA_::FinalStates
-                >::Value
+            ConstexprArray<
+                int,
+                DFA_::FinalStates::Size
             >
         >(std::get<2>(NewT));
     };
@@ -613,7 +536,7 @@ struct MinimizeDFAImpl {
     struct TransitionTable {
         static constexpr auto Table = TruncateArray<
             std::get<1>(NewT),
-            std::array<std::array<int, SymbolsCount>, OldStates>
+            ConstexprArray<ConstexprArray<int, SymbolsCount>, OldStates>
         >(std::get<0>(NewT));
     };
     using Type = DFA<0, FinalStates, TransitionTable>;
@@ -625,19 +548,19 @@ using MinimizeDFA = typename MinimizeDFAImpl<DFA_>::Type;
 template <char C>
 struct Char {
     using NFA_ = SymbolNFA<C>;
-    using Set = IntSet::New<C, Nil>;
+    using Set = IntSet::Set<C>;
     static constexpr int Value = C;
 };
 
 struct Begin {
     using NFA_ = SymbolNFA<BeginSymbol>;
-    using Set = IntSet::New<BeginSymbol, Nil>;
+    using Set = IntSet::Set<BeginSymbol>;
     static constexpr int Value = BeginSymbol;
 };
 
 struct End {
     using NFA_ = SymbolNFA<EndSymbol>;
-    using Set = IntSet::New<EndSymbol, Nil>;
+    using Set = IntSet::Set<EndSymbol>;
     static constexpr int Value = EndSymbol;
 };
 
@@ -707,7 +630,7 @@ using AtLeast = Concat<Repeat<R, N>, Star<R>>;
 template <char... Args>
 struct CharClass {
     using NFA_ = CharClassNFA<Args...>;
-    using Set = IntSet::FromVaradic<Args...>;
+    using Set = IntSet::Set<Args...>;
 };
 
 template <unsigned char C1, unsigned char C2>
@@ -745,16 +668,17 @@ using Letter = CharClassUnion<LowerCase, UpperCase>;
 
 template <typename R>
 class Regex {
-private:
+//private:
+public:
     using NFA_ = typename R::NFA_;
     using DFA_ = NFAToDFA<NFA_>;
     using MinimalDFA = DFA_;
-    template <typename Set>
     static constexpr bool is_final(int state) {
-        return Set::Head == state || is_final<typename Set::Rest>(state);
-    }
-    template <>
-    static constexpr bool is_final<Nil>(int state) {
+        for (size_t i = 0; i < MinimalDFA::FinalStates::Array.size(); ++i) {
+            if (MinimalDFA::FinalStates::Array[i] == state) {
+                return true;
+            }
+        }
         return false;
     }
 public:
@@ -771,7 +695,7 @@ public:
             return false;
         }
         state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
-        return is_final<typename MinimalDFA::FinalStates>(state);
+        return is_final(state);
     }
     static constexpr bool match(const char *str, size_t length) {
         int state = MinimalDFA::StartState;
@@ -786,7 +710,7 @@ public:
             return false;
         }
         state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
-        return is_final<typename MinimalDFA::FinalStates>(state);
+        return is_final(state);
     }
     static constexpr bool match(const char *str) {
         int state = MinimalDFA::StartState;
@@ -801,6 +725,6 @@ public:
             return false;
         }
         state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
-        return is_final<typename MinimalDFA::FinalStates>(state);
+        return is_final(state);
     }
 };

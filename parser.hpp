@@ -23,6 +23,7 @@ static constexpr char GetEscapeChar(char c) {
     switch (c) {
         case 'n': return '\n';
         case 'r': return '\r';
+        case 't': return '\t';
     }
     return c;
 }

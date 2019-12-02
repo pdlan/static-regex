@@ -668,8 +668,7 @@ using Letter = CharClassUnion<LowerCase, UpperCase>;
 
 template <typename R>
 class Regex {
-//private:
-public:
+private:
     using NFA_ = typename R::NFA_;
     using DFA_ = NFAToDFA<NFA_>;
     using MinimalDFA = DFA_;
@@ -726,5 +725,36 @@ public:
         }
         state = MinimalDFA::TransitionTable::Table[state][EndSymbol];
         return is_final(state);
+    }
+    static size_t match_prefix(const std::string &str) {
+        int state = MinimalDFA::StartState;
+        for (size_t i = 0; i < str.length(); ++i) {
+            if (state == -1) {
+                return i;
+            }
+            state = MinimalDFA::TransitionTable::Table[state][str[i]];
+        }
+        return str.length();
+    }
+    static constexpr size_t match_prefix(const char *str, size_t length) {
+        int state = MinimalDFA::StartState;
+        for (size_t i = 0; i < length; ++i) {
+            if (state == -1) {
+                return i;
+            }
+            state = MinimalDFA::TransitionTable::Table[state][str[i]];
+        }
+        return length;
+    }
+    static constexpr size_t match_prefix(const char *str) {
+        int state = MinimalDFA::StartState;
+        size_t i = 0;
+        for (; str[i]; ++i) {
+            if (state == -1) {
+                return i;
+            }
+            state = MinimalDFA::TransitionTable::Table[state][str[i]];
+        }
+        return i;
     }
 };

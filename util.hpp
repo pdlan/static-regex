@@ -7,18 +7,21 @@
 template <typename T, size_t N>
 struct ConstexprArray {
     using value_type = T;
-    T data[N];
-    constexpr ConstexprArray() : data{} {}
+    T data_[N];
+    constexpr ConstexprArray() : data_{} {}
     template <typename... S>
-    constexpr ConstexprArray(S... v) : data{v...} {}
+    constexpr ConstexprArray(S... v) : data_{v...} {}
     constexpr T &operator[] (size_t i) {
-        return data[i];
+        return data_[i];
     }
     constexpr const T &operator[] (size_t i) const {
-        return data[i];
+        return data_[i];
     }
     constexpr size_t size() const {
         return N;
+    }
+    constexpr const T *data() const {
+        return data_;
     }
 };
 
